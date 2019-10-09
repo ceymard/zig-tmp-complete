@@ -1,0 +1,4 @@
+out/**
+**/tslint.json
+**/*.map
+node_modules
