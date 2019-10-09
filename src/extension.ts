@@ -52,7 +52,7 @@ export class ZigLanguageHelper implements vsc.CompletionItemProvider {
 		const zig_path = config.get<string>('zigPath') || 'zig';
 
 		// Right now, this is not a very good solution, as I could have several workspaces
-		this.host = new ZigHost(zig_path, n => this.channel.appendLine('log: ' + n))
+		this.host = new ZigHost(zig_path, n => this.channel.appendLine(n))
 	}
 
 	log(st: string) {
@@ -64,8 +64,10 @@ export class ZigLanguageHelper implements vsc.CompletionItemProvider {
 		// this completion plugin works with offsets, not line / col
 		const offset = doc.offsetAt(pos)
 		const f = this.host.addFile(doc.fileName, doc.getText())
-		return f.scope.getCompletionsAt(offset).map(c =>
-			new vsc.CompletionItem(c.name.value)
-		)
+		return f.scope.getCompletionsAt(offset).map(c => {
+			var r = new vsc.CompletionItem(c.name.value)
+			r.commitCharacters = ['.', '(', ')']
+			return r
+		})
 	}
 }

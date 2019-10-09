@@ -14,12 +14,12 @@ for (var filename of process.argv.slice(2)) {
   const res = ROOT.parse(input) as a.FileBlock
   res._onParsed()
 
-  var WHERE = 124
+  var WHERE = 166
   if (false)
     print_node(res)
   console.log(res.getNodeAt(WHERE).constructor.name)
   // console.log(Object.keys(res.getNodeAt(WHERE).getAvailableNames()))
-  console.log(Object.keys(res.getNodeAt(WHERE).getMembers(false)))
+  console.log(res.getNodeAt(WHERE).getType())
   // console.log(res.statements[0])
   // console.log(f)
 }

@@ -6,6 +6,22 @@ export type Opt<T> = T | null | undefined
 export type Names = {[name: string]: Declaration}
 
 
+export class Chain<T> {
+  constructor(public v: T | null) {
+
+  }
+
+  map<T extends readonly any[], U>(this: Chain<T>, fn: (...t: {[K in keyof T]: NonNullable<T[K]>}) => U): Chain<U>
+  map<U>(fn: (t: NonNullable<T>) => U): Chain<U>
+  map<U>(m: (t: any) => U): Chain<U> {
+    return new Chain(Array.isArray(this.v) && this.v.filter(v => v).length > 0 || this.v != null ? m(this.v as any) : null)
+  }
+
+  value(): T | null {
+    return this.v
+  }
+}
+const chain = <T>(c: T | null) => new Chain(c)
 
 // FIXME missing Node.getDeclarations
 
@@ -13,12 +29,20 @@ export class ZigNode extends Node {
 
   parent!: ZigNode
 
-  getMembers(as_instance: boolean): Names {
-    return {}
+  log(s: string) {
+    const f = this.queryParent(FileBlock)
+    if (!f) return
+    f.file.host.log(this.constructor.name + ' ' + s)
   }
 
   getCompletionsAt(offset: number): Declaration[] {
-    return Object.values(this.getNodeAt(offset).getMembers(false))
+    const node = this.getNodeAt(offset)
+    // FIXME, there is probably more to be done with the node
+    // we're checking...
+    if (!(node instanceof Expression)) return []
+    var typ = node.getType()
+    if (!typ) return []
+    return Object.values(typ.getMembers())
   }
 
   getNodeAt(n: number): ZigNode {
@@ -46,7 +70,7 @@ export class ZigNode extends Node {
   }
 
   getDefinition(): Definition | null {
-    return null
+    return this as any
   }
 
   getOwnNames(): Names {
@@ -58,6 +82,10 @@ export class ZigNode extends Node {
 
 export class Expression extends ZigNode {
 
+  getType(): TypeExpression | null {
+    return null
+  }
+
   getValue(): Expression | null {
     return null
   }
@@ -66,9 +94,19 @@ export class Expression extends ZigNode {
 
   }
 
-  getType(): Expression | null {
-    return null
+}
+
+
+export class TypeExpression extends Expression {
+
+  getType(): TypeExpression | null {
+    return this
   }
+
+  getMembers(): Names {
+    return {}
+  }
+
 }
 
 
@@ -81,19 +119,13 @@ export class Declaration extends Expression {
   type: Opt<Expression>
   value: Opt<Expression> // when used with extern, there may not be a value
 
-  getMembers(as_instance: boolean) {
-    // FIXME check that the final type definition does come from the same file
-    // in the contrary case, filter out the non-public declarations.
-    // there, we get the type
-    if (this.type && !(this.type instanceof Identifier && this.type.value === 'type')) {
-      return this.type.getMembers(true)
-    }
+  getType(): TypeExpression | null {
+    if (this.type)
+      return this.type as TypeExpression
 
-    if (this.value) {
-      return this.value.getMembers(as_instance)
-    }
-
-    return {}
+    if (this.value)
+      return this.value.getType()
+    return null
   }
 
 }
@@ -159,14 +191,18 @@ export class Identifier extends Literal {
 
   doc: Opt<string>
 
-  getDeclaration() {
-    return this.getAvailableNames()[this.value] || null
+  getType(): TypeExpression | null {
+    if (this.parent instanceof DotBinOp && this.parent.rhs === this) {
+      if (!this.parent.lhs) return null // should not happen !
+      return this.parent.lhs.getType()
+    }
+    const decl = this.getDeclaration()
+    if (!decl) return null
+    return decl.getType()
   }
 
-  getMembers(as_instance: boolean): Names {
-    const decl = this.getDeclaration()
-    var res = decl ? decl.getMembers(as_instance) : {}
-    return res
+  getDeclaration() {
+    return this.getAvailableNames()[this.value] || null
   }
 
 }
@@ -177,15 +213,15 @@ export class BooleanLiteral extends Literal { }
 export class IntegerLiteral extends Literal { }
 export class FloatLiteral extends Literal { }
 
-export class PrimitiveType extends Expression {
+export class PrimitiveType extends TypeExpression {
   name!: Identifier
 }
 
-export class TypeType extends PrimitiveType { }
-export class VarType extends PrimitiveType { }
-export class Dot3Type extends PrimitiveType { }
+export class TypeType extends TypeExpression { }
+export class VarType extends TypeExpression { }
+export class Dot3Type extends TypeExpression { }
 
-export class FunctionCall extends Expression {
+export class FunctionCall extends TypeExpression {
   lhs!: Expression
   args = [] as Expression[]
 }
@@ -255,6 +291,10 @@ export class ContainerDeclaration extends Definition {
   packed = false
 
   members: ZigNode[] = []
+
+  getType(): TypeExpression | null {
+    return new ContainerType(this)
+  }
 
   getOwnNames() {
     var res = {} as Names
@@ -327,24 +367,12 @@ export class PromiseType extends Expression {
 
 export class Optional extends Expression {
   rhs!: Expression
-
-  getMembers(as_instance: boolean): Names {
-    return {'?': VariableDeclaration.fake('?', this.rhs, this)}
-  }
 }
 
 export class Pointer extends Expression {
   rhs!: Expression
   kind!: string
   modifiers!: TypeModifiers
-
-  getMembers(as_instance: boolean): Names {
-    if (!this.rhs) return {}
-    return {
-      ...(this.kind === '*' ? this.rhs.getMembers(as_instance) : {}),
-      '*': VariableDeclaration.fake('*', this.rhs, this)
-    }
-  }
 }
 
 export class Reference extends Expression {
@@ -356,6 +384,7 @@ export class ArrayOrSliceDeclaration extends Expression {
   number: Opt<Expression> // if _ then infer the nember of members, otherwise it is provided.
   rhs!: Expression
   modifiers!: TypeModifiers
+
 }
 
 /**
@@ -378,19 +407,25 @@ export class UnaryOpExpression extends Expression {
 
 // .*
 export class DerefOp extends UnaryOpExpression {
-  getMembers(as_instance: boolean) {
-    if (!this.lhs) return {}
-    const m = this.lhs.getMembers(as_instance)['*']
-    return m.getMembers(as_instance)
+
+  getType(){
+    if (!this.lhs) return null
+    var typ = this.lhs.getType()
+    if (typ instanceof Pointer)
+      return typ.rhs.getType()
+    return null
+    // const m = this.lhs.getMembers(as_instance)['*']
+    // return m.getMembers(as_instance)
   }
+
 }
 // .?
 export class DeOpt extends UnaryOpExpression {
-  getMembers(as_instance: boolean) {
-    if (!this.lhs) return {}
-    const m = this.lhs.getMembers(as_instance)['?']
-    return m.getMembers(as_instance)
+
+  getType(): TypeExpression | null {
+    return null
   }
+
 }
 // !
 export class NotOpt extends UnaryOpExpression { }
@@ -398,11 +433,12 @@ export class NotOpt extends UnaryOpExpression { }
 export class Operator extends Expression {
   value = ''
 
-  getMembers(as_instance: boolean) {
-    if (this.value === '.' && this.parent instanceof DotBinOp && this.parent.lhs) {
-      return this.parent.lhs.getMembers(as_instance)
+  getType() {
+    const p = this.parent
+    if (p instanceof DotBinOp && p.lhs) {
+      return p.lhs.getType()
     }
-    return {}
+    return null
   }
 }
 
@@ -449,16 +485,29 @@ export class DotBinOp extends BinOpExpression {
 
   rhs: Opt<Identifier>
 
-  getMembers(as_instance: boolean) {
-    if (!this.lhs) return {}
-    return this.lhs.getMembers(as_instance)
+  getDefinition() {
+    return chain(this.lhs)
+      .map(lhs => [lhs.getType(), this.rhs] as const)
+      .map((typ, rhs) => typ.getMembers()[rhs.value])
+      .map(m => m.getDefinition())
+      .value()
   }
 
+  getType(): TypeExpression | null {
+    // ???
+    return chain(this.getDefinition())
+      .map(d => d.getType())
+      .value()
+  }
 }
 
 // exp [ .. ]
 export class ArrayAccessOp extends BinOpExpression {
   slice: Opt<Expression>
+
+  getType(): TypeExpression | null {
+    return null
+  }
 }
 
 
@@ -525,4 +574,15 @@ export class ForExpression extends Expression { }
 
 export class DeferStatement extends Expression {
   exp!: Expression
+}
+
+export class ContainerType extends TypeExpression {
+  constructor(public cont: ContainerDeclaration) {
+    super()
+  }
+
+  getMembers(): Names {
+    // this type is a fake type used to get access to the variables of the container.
+    return this.cont.getOwnNames()
+  }
 }
