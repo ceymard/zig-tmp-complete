@@ -22,7 +22,7 @@ export class ZigNode extends Node {
     // FIXME, there is probably more to be done with the node
     // we're checking...
     if (!(node instanceof Expression)) return []
-    var typ = node.getType()
+    var typ = node.getType(false)
     if (!typ) return []
     return Object.values(typ.getMembers())
   }
@@ -60,11 +60,7 @@ export class ZigNode extends Node {
 
 export class Expression extends ZigNode {
 
-  getType(): TypeExpression | undefined {
-    return
-  }
-
-  getValue(): Expression | undefined {
+  getType(in_typespace: boolean): TypeExpression | undefined {
     return
   }
 
@@ -77,7 +73,7 @@ export class Expression extends ZigNode {
 
 export class TypeExpression extends Expression {
 
-  getType(): TypeExpression | undefined {
+  getType(in_typespace: boolean): TypeExpression | undefined {
     return this
   }
 
@@ -97,18 +93,14 @@ export class Declaration extends Expression {
   type: Opt<Expression>
   value: Opt<Expression> // when used with extern, there may not be a value
 
-  getValue() {
-    return this.value?.getValue()
-  }
-
-  getType(): TypeExpression | undefined {
+  getType(in_typespace: boolean): TypeExpression | undefined {
     if (this.type) {
       // console.log(this.name.value);
-      return this.type.getValue() as TypeExpression
+      return this.type.getType(true) as TypeExpression
     }
 
     if (this.value) {
-      return this.value.getType()
+      return this.value.getType(in_typespace)
     }
     return
   }
@@ -176,19 +168,11 @@ export class Identifier extends Literal {
 
   doc: Opt<string>
 
-  getValue() {
-    return this.getAvailableNames()[this.value]
-      ?.getValue()
-  }
-
-  getType(): TypeExpression | undefined {
+  getType(in_typespace: boolean): TypeExpression | undefined {
     if (this.parent instanceof DotBinOp && this.parent.rhs === this) {
-      if (!this.parent.lhs) return undefined // should not happen !
-      return this.parent.lhs.getType()
+      return this.parent.lhs?.getType(in_typespace)
     }
-    const decl = this.getDeclaration()
-    if (!decl) return undefined
-    return decl.getType()
+    return this.getDeclaration()?.getType(in_typespace)
   }
 
   getDeclaration() {
@@ -238,9 +222,7 @@ export class FunctionPrototype extends Expression {
 
 
 export class Definition extends Expression {
-  getValue() {
-    return this
-  }
+
 }
 
 
@@ -261,7 +243,7 @@ export class FunctionDefinition extends Definition {
 
 
 export class VariableDeclaration extends Declaration {
-  static fake(name: string, type: Expression, from_node: Expression) {
+  static fake(name: string, type: Expression | undefined, from_node: Expression) {
     var res = new VariableDeclaration()
       .set('name', new Identifier().set('value', name))
       .set('type', type)
@@ -282,7 +264,9 @@ export class ContainerDeclaration extends Definition {
 
   members: ZigNode[] = []
 
-  getType(): TypeExpression | undefined {
+  getType(in_typespace: boolean): TypeExpression | undefined {
+    if (in_typespace)
+      return this
     return new ContainerType(this)
   }
 
@@ -294,9 +278,13 @@ export class ContainerDeclaration extends Definition {
     return res
   }
 
-  getMembers() {
+  getMembers(): Names {
     // Members of a container are its very own declarations, not all the ones in scope.
-    return this.getOwnNames()
+    var res = {} as Names
+    for (var s of this.members)
+      if (s instanceof Declaration && s instanceof ContainerField)
+        res[s.name.value] = s
+    return res
   }
 
   getInstanceMembers(): Names {
@@ -355,12 +343,33 @@ export class PromiseType extends Expression {
 
 export class Optional extends Expression {
   rhs!: Expression
+
+  getType() {
+    return this as any
+  }
+
+  getMembers(): Names {
+    return {
+      '?': VariableDeclaration.fake('?', this.rhs?.getType(true), this)
+    }
+  }
 }
 
 export class Pointer extends Expression {
   rhs!: Expression
   kind!: string
   modifiers!: TypeModifiers
+
+  getType() {
+    return this
+  }
+
+  getMembers(): Names {
+    return {
+      ...(this.kind === '*' ? this.rhs?.getType(true)?.getMembers() ?? {} : {}),
+      '*': VariableDeclaration.fake('*', this.rhs?.getType(true), this)
+    }
+  }
 }
 
 export class Reference extends Expression {
@@ -372,6 +381,10 @@ export class ArrayOrSliceDeclaration extends Expression {
   number: Opt<Expression> // if _ then infer the nember of members, otherwise it is provided.
   rhs!: Expression
   modifiers!: TypeModifiers
+
+  getType() {
+    return this as any
+  }
 
 }
 
@@ -396,22 +409,20 @@ export class UnaryOpExpression extends Expression {
 // .*
 export class DerefOp extends UnaryOpExpression {
 
-  getType() {
-    if (!this.lhs) return undefined
-    var typ = this.lhs.getType()
+  getType(in_typespace: boolean) {
+    var typ = this.lhs?.getType(false)
     if (typ instanceof Pointer)
-      return typ.rhs.getType()
-    return undefined
-    // const m = this.lhs.getMembers(as_instance)['*']
-    // return m.getMembers(as_instance)
+      return typ.rhs.getType(in_typespace)
   }
 
 }
 // .?
 export class DeOpt extends UnaryOpExpression {
 
-  getType(): TypeExpression | undefined {
-    return undefined
+  getType(in_typespace: boolean): TypeExpression | undefined {
+    var typ = this.lhs?.getType(false)
+    if (typ instanceof Optional)
+      return typ.rhs.getType(in_typespace)
   }
 
 }
@@ -421,10 +432,10 @@ export class NotOpt extends UnaryOpExpression { }
 export class Operator extends Expression {
   value = ''
 
-  getType() {
+  getType(in_typespace: boolean) {
     const p = this.parent
     if (p instanceof DotBinOp && p.lhs) {
-      return p.lhs.getType()
+      return p.lhs.getType(in_typespace)
     }
     return undefined
   }
@@ -473,17 +484,11 @@ export class DotBinOp extends BinOpExpression {
 
   rhs: Opt<Identifier>
 
-  getValue() {
-    return this.lhs
-      ?.getType()
-      ?.getMembers()[this.rhs?.value!]
-      .getValue()
-  }
-
-  getType() {
+  getType(in_typespace: boolean) {
     // ???
-    return this.getValue()
-      ?.getType()
+    if (!this.lhs || !this.rhs) return undefined
+    // this.log('' + in_typespace + ' ' + Object.keys(this.lhs.getType(in_typespace)?.getMembers() ?? {}) + ' ' + this.rhs.value)
+    return this.lhs.getType(false)?.getMembers()[this.rhs.value].getType(in_typespace)
   }
 }
 
@@ -491,7 +496,11 @@ export class DotBinOp extends BinOpExpression {
 export class ArrayAccessOp extends BinOpExpression {
   slice: Opt<Expression>
 
-  getType(): TypeExpression | undefined {
+  getType(in_typespace: boolean): TypeExpression | undefined {
+    if (!this.lhs) return undefined
+    const typ = this.lhs.getType(false)
+    if (typ instanceof ArrayOrSliceDeclaration)
+      return typ.rhs.getType(in_typespace)
     return undefined
   }
 }
