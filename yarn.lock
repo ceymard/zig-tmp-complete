@@ -605,9 +605,9 @@ tsutils@^2.29.0:
   dependencies:
     tslib "^1.8.1"
 
-typescript@^3.3.1:
-  version "3.6.3"
-  resolved "https://registry.yarnpkg.com/typescript/-/typescript-3.6.3.tgz#fea942fabb20f7e1ca7164ff626f1a9f3f70b4da"
+typescript@^3.7.0-beta:
+  version "3.7.0-dev.20191010"
+  resolved "https://registry.yarnpkg.com/typescript/-/typescript-3.7.0-dev.20191010.tgz#e2a8d42b0586f129597543b2694a304335c6cc94"
 
 vscode-test@^1.2.0:
   version "1.2.0"

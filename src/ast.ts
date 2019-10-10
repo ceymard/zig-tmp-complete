@@ -6,23 +6,6 @@ export type Opt<T> = T | null | undefined
 export type Names = {[name: string]: Declaration}
 
 
-export class Chain<T> {
-  constructor(public v: T | null) {
-
-  }
-
-  map<T extends readonly any[], U>(this: Chain<T>, fn: (...t: {[K in keyof T]: NonNullable<T[K]>}) => U): Chain<U>
-  map<U>(fn: (t: NonNullable<T>) => U): Chain<U>
-  map<U>(m: (t: any) => U): Chain<U> {
-    return new Chain(Array.isArray(this.v) && this.v.filter(v => v).length > 0 || this.v != null ? m(this.v as any) : null)
-  }
-
-  value(): T | null {
-    return this.v
-  }
-}
-const chain = <T>(c: T | null) => new Chain(c)
-
 // FIXME missing Node.getDeclarations
 
 export class ZigNode extends Node {
@@ -31,8 +14,7 @@ export class ZigNode extends Node {
 
   log(s: string) {
     const f = this.queryParent(FileBlock)
-    if (!f) return
-    f.file.host.log(this.constructor.name + ' ' + s)
+    f?.file.host.log(this.constructor.name + ' ' + s)
   }
 
   getCompletionsAt(offset: number): Declaration[] {
@@ -65,12 +47,8 @@ export class ZigNode extends Node {
    * get the definition of a node, which means its type definition, when
    * available.
    */
-  getDeclaration(): Declaration | null {
-    return null
-  }
-
-  getDefinition(): Definition | null {
-    return this as any
+  getDeclaration(): Declaration | undefined {
+    return
   }
 
   getOwnNames(): Names {
@@ -82,12 +60,12 @@ export class ZigNode extends Node {
 
 export class Expression extends ZigNode {
 
-  getType(): TypeExpression | null {
-    return null
+  getType(): TypeExpression | undefined {
+    return
   }
 
-  getValue(): Expression | null {
-    return null
+  getValue(): Expression | undefined {
+    return
   }
 
   getOriginalDeclaration() {
@@ -99,7 +77,7 @@ export class Expression extends ZigNode {
 
 export class TypeExpression extends Expression {
 
-  getType(): TypeExpression | null {
+  getType(): TypeExpression | undefined {
     return this
   }
 
@@ -119,13 +97,20 @@ export class Declaration extends Expression {
   type: Opt<Expression>
   value: Opt<Expression> // when used with extern, there may not be a value
 
-  getType(): TypeExpression | null {
-    if (this.type)
-      return this.type as TypeExpression
+  getValue() {
+    return this.value?.getValue()
+  }
 
-    if (this.value)
+  getType(): TypeExpression | undefined {
+    if (this.type) {
+      // console.log(this.name.value);
+      return this.type.getValue() as TypeExpression
+    }
+
+    if (this.value) {
       return this.value.getType()
-    return null
+    }
+    return
   }
 
 }
@@ -191,13 +176,18 @@ export class Identifier extends Literal {
 
   doc: Opt<string>
 
-  getType(): TypeExpression | null {
+  getValue() {
+    return this.getAvailableNames()[this.value]
+      ?.getValue()
+  }
+
+  getType(): TypeExpression | undefined {
     if (this.parent instanceof DotBinOp && this.parent.rhs === this) {
-      if (!this.parent.lhs) return null // should not happen !
+      if (!this.parent.lhs) return undefined // should not happen !
       return this.parent.lhs.getType()
     }
     const decl = this.getDeclaration()
-    if (!decl) return null
+    if (!decl) return undefined
     return decl.getType()
   }
 
@@ -248,7 +238,7 @@ export class FunctionPrototype extends Expression {
 
 
 export class Definition extends Expression {
-  getDefinition() {
+  getValue() {
     return this
   }
 }
@@ -292,7 +282,7 @@ export class ContainerDeclaration extends Definition {
 
   members: ZigNode[] = []
 
-  getType(): TypeExpression | null {
+  getType(): TypeExpression | undefined {
     return new ContainerType(this)
   }
 
@@ -304,10 +294,8 @@ export class ContainerDeclaration extends Definition {
     return res
   }
 
-  getMembers(as_instance: boolean) {
+  getMembers() {
     // Members of a container are its very own declarations, not all the ones in scope.
-    if (as_instance)
-      return this.getInstanceMembers()
     return this.getOwnNames()
   }
 
@@ -408,12 +396,12 @@ export class UnaryOpExpression extends Expression {
 // .*
 export class DerefOp extends UnaryOpExpression {
 
-  getType(){
-    if (!this.lhs) return null
+  getType() {
+    if (!this.lhs) return undefined
     var typ = this.lhs.getType()
     if (typ instanceof Pointer)
       return typ.rhs.getType()
-    return null
+    return undefined
     // const m = this.lhs.getMembers(as_instance)['*']
     // return m.getMembers(as_instance)
   }
@@ -422,8 +410,8 @@ export class DerefOp extends UnaryOpExpression {
 // .?
 export class DeOpt extends UnaryOpExpression {
 
-  getType(): TypeExpression | null {
-    return null
+  getType(): TypeExpression | undefined {
+    return undefined
   }
 
 }
@@ -438,7 +426,7 @@ export class Operator extends Expression {
     if (p instanceof DotBinOp && p.lhs) {
       return p.lhs.getType()
     }
-    return null
+    return undefined
   }
 }
 
@@ -485,19 +473,17 @@ export class DotBinOp extends BinOpExpression {
 
   rhs: Opt<Identifier>
 
-  getDefinition() {
-    return chain(this.lhs)
-      .map(lhs => [lhs.getType(), this.rhs] as const)
-      .map((typ, rhs) => typ.getMembers()[rhs.value])
-      .map(m => m.getDefinition())
-      .value()
+  getValue() {
+    return this.lhs
+      ?.getType()
+      ?.getMembers()[this.rhs?.value!]
+      .getValue()
   }
 
-  getType(): TypeExpression | null {
+  getType() {
     // ???
-    return chain(this.getDefinition())
-      .map(d => d.getType())
-      .value()
+    return this.getValue()
+      ?.getType()
   }
 }
 
@@ -505,8 +491,8 @@ export class DotBinOp extends BinOpExpression {
 export class ArrayAccessOp extends BinOpExpression {
   slice: Opt<Expression>
 
-  getType(): TypeExpression | null {
-    return null
+  getType(): TypeExpression | undefined {
+    return undefined
   }
 }
 
