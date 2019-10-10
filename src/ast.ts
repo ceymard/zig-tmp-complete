@@ -198,6 +198,15 @@ export class Dot3Type extends TypeExpression { }
 export class FunctionCall extends TypeExpression {
   lhs!: Expression
   args = [] as Expression[]
+
+  getType(in_typespace: boolean) {
+    // maybe store args in a weakref to have a reference to the result somewhere
+    const typ = this.lhs.getType(in_typespace)
+    if (typ instanceof FunctionDefinition) {
+      return typ.proto.return_type?.getType(true)
+    }
+    return undefined
+  }
 }
 
 
@@ -230,6 +239,10 @@ export class FunctionDefinition extends Definition {
   pub = false
   proto!: FunctionPrototype
   block: Opt<Block>
+
+  getType() {
+    return this as any
+  }
 
   getOwnNames(): Names {
     var res = {} as Names
@@ -492,6 +505,7 @@ export class DotBinOp extends BinOpExpression {
 
   getType(in_typespace: boolean) {
     // ???
+    // this.log('here....')
     if (!this.lhs || !this.rhs) return undefined
     // this.log('' + in_typespace + ' ' + Object.keys(this.lhs.getType(in_typespace)?.getMembers() ?? {}) + ' ' + this.rhs.value)
     return this.lhs.getType(false)?.getMembers()[this.rhs.value].getType(in_typespace)
