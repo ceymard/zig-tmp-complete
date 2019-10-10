@@ -386,6 +386,12 @@ export class ArrayOrSliceDeclaration extends Expression {
     return this as any
   }
 
+  getMembers(): Names {
+    return {
+      'len': VariableDeclaration.fake('len', undefined, this)// FIXME should be some kind of int
+    }
+  }
+
 }
 
 /**
@@ -498,9 +504,9 @@ export class ArrayAccessOp extends BinOpExpression {
 
   getType(in_typespace: boolean): TypeExpression | undefined {
     if (!this.lhs) return undefined
-    const typ = this.lhs.getType(false)
+    const typ = this.lhs.getType(in_typespace)
     if (typ instanceof ArrayOrSliceDeclaration)
-      return typ.rhs.getType(in_typespace)
+      return typ.rhs.getType(true)
     return undefined
   }
 }
