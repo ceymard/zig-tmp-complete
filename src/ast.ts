@@ -203,7 +203,8 @@ export class FunctionCall extends TypeExpression {
     // maybe store args in a weakref to have a reference to the result somewhere
     const typ = this.lhs.getType(in_typespace)
     if (typ instanceof FunctionDefinition) {
-      return typ.proto.return_type?.getType(true)
+      return typ.proto.getReturnType()
+      // return typ.proto.return_type?.getType(true)
     }
     return undefined
   }
@@ -227,6 +228,16 @@ export class FunctionPrototype extends Expression {
   ident: Opt<Identifier>
   args = [] as FunctionArgumentDefinition[]
   return_type: Opt<Expression>
+
+  getReturnType(): TypeExpression | undefined {
+    const p = this.parent
+    if (p instanceof FunctionDefinition && p.returns.length > 0) {
+      this.log('wtf')
+      var r = p.returns[0].exp?.getType(true)
+      return r
+    }
+  }
+
 }
 
 
@@ -239,6 +250,7 @@ export class FunctionDefinition extends Definition {
   pub = false
   proto!: FunctionPrototype
   block: Opt<Block>
+  returns: ReturnExpression[] = []
 
   getType() {
     return this as any
@@ -528,6 +540,11 @@ export class ArrayAccessOp extends BinOpExpression {
 
 export class ReturnExpression extends Expression {
   exp: Opt<Expression>
+
+  onParsed() {
+    const def = this.queryParent(FunctionDefinition)
+    def?.returns.push(this)
+  }
 }
 
 export class TestDeclaration extends ZigNode {

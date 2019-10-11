@@ -112,10 +112,10 @@ export class ZigHost {
     start = process.hrtime()
     const scope = ROOT.parse(input)!
     const parse_hrtime = process.hrtime(start)
-    scope._onParsed()
-
     const res = this.files[path] = new File(this, path, lexer, scope, contents, lex_hrtime, parse_hrtime)
+
     scope.file = res
+    scope._onParsed()
     return res
   }
 
