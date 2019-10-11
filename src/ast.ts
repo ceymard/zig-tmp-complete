@@ -203,6 +203,7 @@ export class FunctionCall extends TypeExpression {
     // maybe store args in a weakref to have a reference to the result somewhere
     const typ = this.lhs.getType(in_typespace)
     if (typ instanceof FunctionDefinition) {
+      typ.current_args = this.args
       return typ.proto.getReturnType()
       // return typ.proto.return_type?.getType(true)
     }
@@ -214,12 +215,29 @@ export class FunctionCall extends TypeExpression {
 export class BuiltinFunctionCall extends Expression {
   name = ''
   args = [] as Expression[]
+
 }
 
 ////////////////////////////////////////////////////////
 
 export class FunctionArgumentDefinition extends Declaration {
   comptime = false
+
+  getType(in_typespace: boolean) {
+    // check if the type is comptime
+    if (this.comptime && this.type instanceof PrimitiveType && this.type.name.value === 'type') {
+      const proto = this.parent
+      if (!(proto instanceof FunctionPrototype)) return;
+      const def = proto.parent
+      if (!(def instanceof FunctionDefinition)) return;
+      if (!def.current_args) return;
+      const idx = def.proto.args.indexOf(this)
+      return def.current_args[idx]?.getType(in_typespace)
+    }
+
+    return super.getType(in_typespace)
+  }
+
 }
 
 
@@ -232,7 +250,6 @@ export class FunctionPrototype extends Expression {
   getReturnType(): TypeExpression | undefined {
     const p = this.parent
     if (p instanceof FunctionDefinition && p.returns.length > 0) {
-      this.log('wtf')
       var r = p.returns[0].exp?.getType(true)
       return r
     }
@@ -251,6 +268,8 @@ export class FunctionDefinition extends Definition {
   proto!: FunctionPrototype
   block: Opt<Block>
   returns: ReturnExpression[] = []
+
+  current_args: Expression[] = []
 
   getType() {
     return this as any

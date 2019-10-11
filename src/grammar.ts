@@ -501,6 +501,7 @@ export const FUNCTION_ARGUMENT = SeqObj({
   new a.FunctionArgumentDefinition()
     .set('name', r.ident!)
     .set('type', r.type)
+    .set('comptime', !!r.opts.comptime)
 )
 
 
