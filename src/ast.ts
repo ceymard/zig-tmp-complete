@@ -216,6 +216,23 @@ export class BuiltinFunctionCall extends Expression {
   name = ''
   args = [] as Expression[]
 
+  getType(in_typespace: boolean): TypeExpression | undefined {
+    if (this.name === '@import' && this.args.length === 1) {
+      return this.handleImport(in_typespace)
+    }
+    return;
+  }
+
+  handleImport(in_typespace: boolean): TypeExpression | undefined {
+    const fb = this.queryParent(FileBlock)
+    if (!fb) return
+    const a = this.args[0]
+    if (!(a instanceof StringLiteral)) return
+    const res = fb.file.host.getZigFile(fb.path, a.value.slice(1, -1))
+    // filter publics ???
+    return res?.scope.getType(in_typespace)
+  }
+
 }
 
 ////////////////////////////////////////////////////////
@@ -302,6 +319,7 @@ export class ContainerField extends Declaration {
 }
 
 
+// FIXME should extend block to reuse the importnamespace
 export class ContainerDeclaration extends Definition {
   extern = false
   packed = false
