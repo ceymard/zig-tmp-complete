@@ -12,6 +12,13 @@ export class ZigNode extends Node {
 
   parent!: ZigNode
 
+  get file_block(): FileBlock {
+    var n = this as ZigNode
+    while (n.parent)
+      n = n.parent
+    return n as FileBlock
+  }
+
   log(s: string) {
     const f = this.queryParent(FileBlock)
     f?.file.host.log(this.constructor.name + ' ' + s)
@@ -272,6 +279,7 @@ export class FunctionPrototype extends Expression {
   ident: Opt<Identifier>
   args = [] as FunctionArgumentDefinition[]
   return_type: Opt<Expression>
+  pub = false
 
   getReturnType(): TypeExpression | undefined {
     const p = this.parent
@@ -317,6 +325,7 @@ export class VariableDeclaration extends Declaration {
     var res = new VariableDeclaration()
       .set('name', new Identifier().set('value', name))
       .set('type', type)
+      .set('pub', true)
     res.parent = from_node
     return res
   }

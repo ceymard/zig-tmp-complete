@@ -513,7 +513,7 @@ export const FUNCTION_CALL_ARGUMENTS = S`( ${OptSeparatedBy(',', EXPRESSION)} )`
 export const FUNCTION_PROTOTYPE = SeqObj({
   doc:          DOC,
   export:       Opt('export'),
-  pub:          Opt('pub'),
+  pub:          OptBool('pub'),
   extern:       OPT_EXTERN,
                 opt_kw_fncc,
                 opt_kw_threadlocal,
@@ -530,23 +530,27 @@ export const FUNCTION_PROTOTYPE = SeqObj({
   .set('args', res.args)
   .set('ident', res.ident)
   .set('return_type', res.return_type)
+  .set('pub', res.pub)
 )
 
 
 
 export const OLD_FUNCTION_DECLARATION = SeqObj({
+  optpub:     OptBool('pub'),
   proto:      FUNCTION_PROTOTYPE,
   blk:        Either(() => BLOCK, Opt(';').map(r => null))
 })
 .map(r => new a.FunctionDefinition()
   .set('proto', r.proto)
   .set('block', r.blk)
+  .set('pub', r.optpub || r.proto.pub)
 )
 .map(r => {
   if (r.proto.ident) {
     return new a.VariableDeclaration()
       .set('value', r)
       .set('name', r.proto.ident)
+      .set('pub', r.pub)
   }
   return r
 })

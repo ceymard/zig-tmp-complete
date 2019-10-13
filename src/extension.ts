@@ -1,9 +1,9 @@
 import * as vsc from 'vscode';
 import { ZigHost } from './host';
-import { FileBlock } from './ast';
+import { ContainerDeclaration, FunctionDefinition } from './ast';
 
 const ZIG_MODE: vsc.DocumentFilter = { language: 'zig', scheme: 'file' }
-
+const K = vsc.CompletionItemKind
 
 export function activate(ctx: vsc.ExtensionContext) {
 
@@ -67,13 +67,21 @@ export class ZigLanguageHelper implements vsc.CompletionItemProvider {
 		const n = f.scope.getNodeAt(offset) // to check for pubs.
 		return n.getCompletions()
 			.filter(c => {
-				return c.pub || c.queryParent(FileBlock)?.file.path === doc.fileName
+				// return true
+				return c.pub || c.file_block.file.path === doc.fileName
 			})
 			.map(c => {
-			var r = new vsc.CompletionItem(c.name.value)
-			// this.log('' + c.queryParent(FileBlock)?.file.path)
-			r.commitCharacters = ['.', '(', ')']
-			return r
-		})
+				var r = new vsc.CompletionItem(c.name.value)
+
+				const typ = c.getType()
+				if (typ instanceof ContainerDeclaration)
+					r.kind = K.Struct
+				else if (typ instanceof FunctionDefinition)
+					r.kind = K.Function
+
+				// else if (typ instanceof )
+				r.commitCharacters = ['.', '(', ')', ',', ';']
+				return r
+			})
 	}
 }
