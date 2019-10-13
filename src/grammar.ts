@@ -251,7 +251,7 @@ export const PREFIX_EXPRESSION = SeqObj({
   op:           Opt(Token(/try|\!|-|~|-%|&|await/).map(t => new a.Operator().set('value', t.str))),
   exp:          PRIMARY_EXPRESSION
 })
-.map(e => e.op ? new a.UnaryOpExpression().set('rhs', e.exp).set('op', e.op) : e.exp)
+.map(e => e.op ? new a.UnaryOpExpression().set('lhs', e.exp).set('op', e.op) : e.exp)
 
 const BinOp = (op: RawRule<any>, exp: Rule<a.Expression>) => SeqObj({
   exp,
@@ -327,7 +327,7 @@ export const PRIMARY_TYPE_EXPRESSION: Rule<a.Expression> = Either(
   SeqObj({
     ident:    Token(T.BUILTIN_IDENT),
     args:     () => FUNCTION_CALL_ARGUMENTS,
-  }).map(r => new a.BuiltinFunctionCall().set('name', r.ident.str).set('args', r.args)),
+  }).map(r => new a.BuiltinFunctionCall().set('name', r.ident.str).set('args', r.args as a.ExpressionList<a.Expression>)),
   // container
   () => CONTAINER_DECL,
   // dot identifier, used in enums mostly.
@@ -506,7 +506,7 @@ export const FUNCTION_ARGUMENT = SeqObj({
 
 
 /////////////////////////////////////////////////////////////////////////////
-export const FUNCTION_CALL_ARGUMENTS = S`( ${OptSeparatedBy(',', EXPRESSION)} )`
+export const FUNCTION_CALL_ARGUMENTS = S`( ${OptSeparatedBy(',', EXPRESSION)} )`.map(n => new a.ExpressionList<a.Expression>().set('args', n))
 
 
 //////////////////////////////////////////

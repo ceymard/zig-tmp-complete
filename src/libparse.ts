@@ -180,18 +180,18 @@ export class Rule<T> {
         var end = res[0] - 1
         for (var m of this._maps) {
           res[1] = m(res[1], input[start], input[end], input)
+          // If the result is a node, then assign it its position.
+          if (res[1] instanceof Node) {
+            var st = input[pos]
+            var en = input[res[0] - 1]
+            res[1].range = [
+              new Position(st.offset, st.line, st.col, st.str.length),
+              new Position(en.offset + en.str.length, en.line, en.col, en.str.length)
+            ]
+          }
         }
       }
 
-      // If the result is a node, then assign it its position.
-      if (res[1] instanceof Node) {
-        var st = input[pos]
-        var en = input[res[0] - 1]
-        res[1].range = [
-          new Position(st.offset, st.line, st.col, st.str.length),
-          new Position(en.offset + en.str.length, en.line, en.col, en.str.length)
-        ]
-      }
         // return [res[0], this._maps(res[1], pos, res[0], input)]
       return res
     }
@@ -627,6 +627,10 @@ export class Node {
       // children speak first.
       c._onParsed()
 
+      if (!c.range) {
+        // this.log('!!' + c.constructor.name)
+        continue
+      }
       if (c.range[0] && (!start || start.offset > c.range[0].offset))
         start = c.range[0]
       if (c.range[1] && (!end || end.offset + end.length < c.range[1].offset + c.range[1].length))

@@ -14,7 +14,7 @@ for (var filename of process.argv.slice(2)) {
   const res = ROOT.parse(input) as a.FileBlock
   res._onParsed()
 
-  var WHERE = 167
+  // var WHERE = 167
   // if (false)
     print_node(res)
   // console.log(res.getNodeAt(WHERE).constructor.name)

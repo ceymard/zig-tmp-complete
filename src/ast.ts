@@ -200,15 +200,19 @@ export class TypeType extends TypeExpression { }
 export class VarType extends TypeExpression { }
 export class Dot3Type extends TypeExpression { }
 
+export class ExpressionList<T extends Expression> extends TypeExpression {
+  args = [] as T[]
+}
+
 export class FunctionCall extends TypeExpression {
   lhs!: Expression
-  args = [] as Expression[]
+  args!: ExpressionList<Expression>
 
   getType() {
     // maybe store args in a weakref to have a reference to the result somewhere
     const typ = this.lhs.getType()
     if (typ instanceof FunctionDefinition) {
-      typ.current_args = this.args
+      typ.current_args = this.args.args
       return typ.proto.getReturnType()
       // return typ.proto.return_type?.getType(true)
     }
@@ -219,10 +223,10 @@ export class FunctionCall extends TypeExpression {
 
 export class BuiltinFunctionCall extends Expression {
   name = ''
-  args = [] as Expression[]
+  args!: ExpressionList<Expression>
 
   getType(): TypeExpression | undefined {
-    if (this.name === '@import' && this.args.length === 1) {
+    if (this.name === '@import' && this.args.args.length === 1) {
       return this.handleImport()
     }
     return;
@@ -231,7 +235,7 @@ export class BuiltinFunctionCall extends Expression {
   handleImport(): TypeExpression | undefined {
     const fb = this.queryParent(FileBlock)
     if (!fb) return
-    const a = this.args[0]
+    const a = this.args.args[0]
     if (!(a instanceof StringLiteral)) return
     const res = fb.file.host.getZigFile(fb.path, a.value.slice(1, -1))
     // filter publics ???

@@ -29,8 +29,7 @@ function trylog(def?: any) {
 			try {
 				return original.apply(this, arguments)
 			} catch (e) {
-				(this as any).log(e.message)
-				(this as any).log(JSON.stringify(e.stack))
+				(this as any).log(e.message + ' ' + e.stack)
 				return def
 			}
 		}
