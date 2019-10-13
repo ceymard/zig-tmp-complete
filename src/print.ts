@@ -8,8 +8,8 @@ export function print_lexeme(l: Lexeme) {
 
 export function print_node(n: Node, indent = '', prefix = '') {
   var suppl =
-    [] as string[]
-    // [n.range ? ch.grey('' + n.range[0].offset) : ''] as string[]
+    // [] as string[]
+    [n.range ? ch.grey('' + n.range[0].offset + '-' + n.range[1].offset) : ''] as string[]
   if (n instanceof a.Identifier)
     suppl.push(ch.green(n.value))
   else if (n instanceof a.Literal)

@@ -188,8 +188,8 @@ export class Rule<T> {
         var st = input[pos]
         var en = input[res[0] - 1]
         res[1].range = [
-          new Position(st.offset, st.line, st.col),
-          new Position(en.offset + en.str.length, en.line, en.col)
+          new Position(st.offset, st.line, st.col, st.str.length),
+          new Position(en.offset + en.str.length, en.line, en.col, en.str.length)
         ]
       }
         // return [res[0], this._maps(res[1], pos, res[0], input)]
@@ -583,7 +583,8 @@ export class Position {
   constructor(
     public offset: number,
     public line: number,
-    public col: number
+    public col: number,
+    public length: number
   ) { }
 }
 
@@ -619,23 +620,21 @@ export class Node {
   }
 
   _onParsed() {
-    // children speak first.
-    for (var c of this.children)
+    var start: Position = this.range?.[0]
+    var end: Position = this.range?.[1]
+
+    for (var c of this.children) {
+      // children speak first.
       c._onParsed()
 
-    // Keep the children sorted.
-    this.children.sort((a, b) => {
-      var a1 = a.range[0].offset
-      var b1 = b.range[0].offset
-      return a1 > b1 ? 1 : a1 < b1 ? -1 : 0
-    })
-
-    if (this.children.length && !this.range) {
-      this.range = [
-        this.children[0].range[0],
-        this.children[this.children.length - 1].range[1]
-      ]
+      if (c.range[0] && (!start || start.offset > c.range[0].offset))
+        start = c.range[0]
+      if (c.range[1] && (!end || end.offset + end.length < c.range[1].offset + c.range[1].length))
+        end = c.range[1]
     }
+
+    if (start && end)
+      this.range = [start, end]
 
     this.onParsed()
   }
@@ -653,7 +652,7 @@ export class Node {
   getNodeAt(offset: number): Node {
     for (var c of this.children) {
       // console.log(c.constructor.name, c.range)
-      if (c.range && (c.range[0].offset <= offset && offset <= c.range[1].offset)) {
+      if (c.range && (c.range[0].offset <= offset && offset <= c.range[1].offset + c.range[1].length)) {
         return c.getNodeAt(offset)
       }
     }
@@ -669,7 +668,7 @@ export class Node {
       if (this.parent.constructor === t)
         return this.parent as any
       return this.parent.queryParent(t)
-    }
+    } else return this as any
     return null
   }
 }

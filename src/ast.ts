@@ -19,10 +19,8 @@ export class ZigNode extends Node {
 
   getCompletionsAt(offset: number): Declaration[] {
     const node = this.getNodeAt(offset)
-    // FIXME, there is probably more to be done with the node
-    // we're checking...
     if (!(node instanceof Expression)) return []
-    var typ = node.getType(false)
+    var typ = node.getType()
     if (!typ) return []
     return Object.values(typ.getMembers())
   }
@@ -60,8 +58,15 @@ export class ZigNode extends Node {
 
 export class Expression extends ZigNode {
 
-  getType(in_typespace: boolean): TypeExpression | undefined {
+  getType(): TypeExpression | undefined {
     return
+  }
+
+  getContainerType(): TypeExpression | undefined {
+    const typ = this.getType()
+    if (typ instanceof ContainerDeclaration)
+      return new ContainerType(typ)
+    return typ
   }
 
   getOriginalDeclaration() {
@@ -73,7 +78,7 @@ export class Expression extends ZigNode {
 
 export class TypeExpression extends Expression {
 
-  getType(in_typespace: boolean): TypeExpression | undefined {
+  getType(): TypeExpression | undefined {
     return this
   }
 
@@ -93,14 +98,14 @@ export class Declaration extends Expression {
   type: Opt<Expression>
   value: Opt<Expression> // when used with extern, there may not be a value
 
-  getType(in_typespace: boolean): TypeExpression | undefined {
+  getType(): TypeExpression | undefined {
     if (this.type) {
       // console.log(this.name.value);
-      return this.type.getType(true) as TypeExpression
+      return this.type.getContainerType() as TypeExpression
     }
 
     if (this.value) {
-      return this.value.getType(in_typespace)
+      return this.value.getType()
     }
     return
   }
@@ -168,11 +173,11 @@ export class Identifier extends Literal {
 
   doc: Opt<string>
 
-  getType(in_typespace: boolean): TypeExpression | undefined {
+  getType(): TypeExpression | undefined {
     if (this.parent instanceof DotBinOp && this.parent.rhs === this) {
-      return this.parent.lhs?.getType(in_typespace)
+      return this.parent.lhs?.getType()
     }
-    return this.getDeclaration()?.getType(in_typespace)
+    return this.getDeclaration()?.getType()
   }
 
   getDeclaration() {
@@ -199,9 +204,9 @@ export class FunctionCall extends TypeExpression {
   lhs!: Expression
   args = [] as Expression[]
 
-  getType(in_typespace: boolean) {
+  getType() {
     // maybe store args in a weakref to have a reference to the result somewhere
-    const typ = this.lhs.getType(in_typespace)
+    const typ = this.lhs.getType()
     if (typ instanceof FunctionDefinition) {
       typ.current_args = this.args
       return typ.proto.getReturnType()
@@ -216,21 +221,21 @@ export class BuiltinFunctionCall extends Expression {
   name = ''
   args = [] as Expression[]
 
-  getType(in_typespace: boolean): TypeExpression | undefined {
+  getType(): TypeExpression | undefined {
     if (this.name === '@import' && this.args.length === 1) {
-      return this.handleImport(in_typespace)
+      return this.handleImport()
     }
     return;
   }
 
-  handleImport(in_typespace: boolean): TypeExpression | undefined {
+  handleImport(): TypeExpression | undefined {
     const fb = this.queryParent(FileBlock)
     if (!fb) return
     const a = this.args[0]
     if (!(a instanceof StringLiteral)) return
     const res = fb.file.host.getZigFile(fb.path, a.value.slice(1, -1))
     // filter publics ???
-    return res?.scope.getType(in_typespace)
+    return res?.scope.getType()
   }
 
 }
@@ -240,7 +245,7 @@ export class BuiltinFunctionCall extends Expression {
 export class FunctionArgumentDefinition extends Declaration {
   comptime = false
 
-  getType(in_typespace: boolean) {
+  getType() {
     // check if the type is comptime
     if (this.comptime && this.type instanceof PrimitiveType && this.type.name.value === 'type') {
       const proto = this.parent
@@ -249,10 +254,10 @@ export class FunctionArgumentDefinition extends Declaration {
       if (!(def instanceof FunctionDefinition)) return;
       if (!def.current_args) return;
       const idx = def.proto.args.indexOf(this)
-      return def.current_args[idx]?.getType(in_typespace)
+      return def.current_args[idx]?.getType()
     }
 
-    return super.getType(in_typespace)
+    return super.getType()
   }
 
 }
@@ -267,7 +272,7 @@ export class FunctionPrototype extends Expression {
   getReturnType(): TypeExpression | undefined {
     const p = this.parent
     if (p instanceof FunctionDefinition && p.returns.length > 0) {
-      var r = p.returns[0].exp?.getType(true)
+      var r = p.returns[0].exp?.getType()
       return r
     }
   }
@@ -326,10 +331,8 @@ export class ContainerDeclaration extends Definition {
 
   members: ZigNode[] = []
 
-  getType(in_typespace: boolean): TypeExpression | undefined {
-    if (in_typespace)
-      return this
-    return new ContainerType(this)
+  getType(): TypeExpression | undefined {
+    return this
   }
 
   getOwnNames() {
@@ -341,6 +344,10 @@ export class ContainerDeclaration extends Definition {
   }
 
   getMembers(): Names {
+    return this.getOwnNames()
+  }
+
+  getContainerNames(): Names {
     // Members of a container are its very own declarations, not all the ones in scope.
     var res = {} as Names
     for (var s of this.members)
@@ -412,7 +419,7 @@ export class Optional extends Expression {
 
   getMembers(): Names {
     return {
-      '?': VariableDeclaration.fake('?', this.rhs?.getType(true), this)
+      '?': VariableDeclaration.fake('?', this.rhs?.getType(), this)
     }
   }
 }
@@ -428,8 +435,8 @@ export class Pointer extends Expression {
 
   getMembers(): Names {
     return {
-      ...(this.kind === '*' ? this.rhs?.getType(true)?.getMembers() ?? {} : {}),
-      '*': VariableDeclaration.fake('*', this.rhs?.getType(true), this)
+      ...(this.kind === '*' ? this.rhs?.getType()?.getMembers() ?? {} : {}),
+      '*': VariableDeclaration.fake('*', this.rhs?.getType(), this)
     }
   }
 }
@@ -477,20 +484,20 @@ export class UnaryOpExpression extends Expression {
 // .*
 export class DerefOp extends UnaryOpExpression {
 
-  getType(in_typespace: boolean) {
-    var typ = this.lhs?.getType(false)
+  getType() {
+    var typ = this.lhs?.getType()
     if (typ instanceof Pointer)
-      return typ.rhs.getType(in_typespace)
+      return typ.rhs.getType()
   }
 
 }
 // .?
 export class DeOpt extends UnaryOpExpression {
 
-  getType(in_typespace: boolean): TypeExpression | undefined {
-    var typ = this.lhs?.getType(false)
+  getType(): TypeExpression | undefined {
+    var typ = this.lhs?.getType()
     if (typ instanceof Optional)
-      return typ.rhs.getType(in_typespace)
+      return typ.rhs.getType()
   }
 
 }
@@ -500,10 +507,10 @@ export class NotOpt extends UnaryOpExpression { }
 export class Operator extends Expression {
   value = ''
 
-  getType(in_typespace: boolean) {
+  getType() {
     const p = this.parent
     if (p instanceof DotBinOp && p.lhs) {
-      return p.lhs.getType(in_typespace)
+      return p.lhs.getType()
     }
     return undefined
   }
@@ -552,12 +559,11 @@ export class DotBinOp extends BinOpExpression {
 
   rhs: Opt<Identifier>
 
-  getType(in_typespace: boolean) {
+  getType() {
     // ???
     // this.log('here....')
     if (!this.lhs || !this.rhs) return undefined
-    // this.log('' + in_typespace + ' ' + Object.keys(this.lhs.getType(in_typespace)?.getMembers() ?? {}) + ' ' + this.rhs.value)
-    return this.lhs.getType(false)?.getMembers()[this.rhs.value].getType(in_typespace)
+    return this.lhs.getType()?.getMembers()[this.rhs.value]?.getType()
   }
 }
 
@@ -565,11 +571,11 @@ export class DotBinOp extends BinOpExpression {
 export class ArrayAccessOp extends BinOpExpression {
   slice: Opt<Expression>
 
-  getType(in_typespace: boolean): TypeExpression | undefined {
+  getType(): TypeExpression | undefined {
     if (!this.lhs) return undefined
-    const typ = this.lhs.getType(in_typespace)
+    const typ = this.lhs.getType()
     if (typ instanceof ArrayOrSliceDeclaration)
-      return typ.rhs.getType(true)
+      return typ.rhs.getType()
     return undefined
   }
 }
@@ -650,8 +656,11 @@ export class ContainerType extends TypeExpression {
     super()
   }
 
+  getType() {
+    return this
+  }
+
   getMembers(): Names {
-    // this type is a fake type used to get access to the variables of the container.
-    return this.cont.getOwnNames()
+    return this.cont.getContainerNames()
   }
 }
