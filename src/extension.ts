@@ -1,5 +1,6 @@
 import * as vsc from 'vscode';
 import { ZigHost } from './host';
+import { FileBlock } from './ast';
 
 const ZIG_MODE: vsc.DocumentFilter = { language: 'zig', scheme: 'file' }
 
@@ -63,8 +64,14 @@ export class ZigLanguageHelper implements vsc.CompletionItemProvider {
 		// this completion plugin works with offsets, not line / col
 		const offset = doc.offsetAt(pos)
 		const f = this.host.addFile(doc.fileName, doc.getText())
-		return f.scope.getCompletionsAt(offset).map(c => {
+		const n = f.scope.getNodeAt(offset) // to check for pubs.
+		return n.getCompletions()
+			.filter(c => {
+				return c.pub || c.queryParent(FileBlock)?.file.path === doc.fileName
+			})
+			.map(c => {
 			var r = new vsc.CompletionItem(c.name.value)
+			// this.log('' + c.queryParent(FileBlock)?.file.path)
 			r.commitCharacters = ['.', '(', ')']
 			return r
 		})

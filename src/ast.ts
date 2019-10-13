@@ -19,18 +19,18 @@ export class ZigNode extends Node {
 
   getCompletionsAt(offset: number): Declaration[] {
     const node = this.getNodeAt(offset)
-    if (!(node instanceof Expression)) return []
-    var typ = node.getType()
+    return node.getCompletions()
+  }
+
+  getCompletions(): Declaration[] {
+    if (!(this instanceof Expression)) return []
+    var typ = this.getType()
     if (!typ) return []
     return Object.values(typ.getMembers())
   }
 
   getNodeAt(n: number): ZigNode {
     return super.getNodeAt(n) as ZigNode
-  }
-
-  getCompletions(): Declaration[] {
-    return []
   }
 
   getAvailableNames(): Names {
@@ -237,7 +237,7 @@ export class BuiltinFunctionCall extends Expression {
     if (!fb) return
     const a = this.args.args[0]
     if (!(a instanceof StringLiteral)) return
-    const res = fb.file.host.getZigFile(fb.path, a.value.slice(1, -1))
+    const res = fb.file.host.getZigFile(fb.file.path, a.value.slice(1, -1))
     // filter publics ???
     return res?.scope.getType()
   }
@@ -472,7 +472,6 @@ export class ArrayOrSliceDeclaration extends Expression {
  */
 export class FileBlock extends StructDeclaration {
 
-  path: string = ''
   file!: File
 
   // TODO a file should let me find a Node by its position.

@@ -86,6 +86,7 @@ export class ZigHost {
       if (this.librairies[path]) {
         return this.addFile(this.librairies[path], fs.readFileSync(this.librairies[path], 'utf-8'))
       } else {
+        // this.log(`from: ${fromfile} => ${path}`)
 
         path = pth.resolve(pth.dirname(fromfile), path)
         return this.addFile(path, fs.readFileSync(path, 'utf-8'))
