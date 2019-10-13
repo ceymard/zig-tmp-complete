@@ -432,7 +432,7 @@ export class Optional extends Expression {
 
   getMembers(): Names {
     return {
-      '?': VariableDeclaration.fake('?', this.rhs?.getType(), this)
+      '?': VariableDeclaration.fake('?', this.rhs?.getContainerType(), this)
     }
   }
 }
@@ -448,8 +448,8 @@ export class Pointer extends Expression {
 
   getMembers(): Names {
     return {
-      ...(this.kind === '*' ? this.rhs?.getType()?.getMembers() ?? {} : {}),
-      '*': VariableDeclaration.fake('*', this.rhs?.getType(), this)
+      ...(this.kind === '*' ? this.rhs?.getContainerType()?.getMembers() ?? {} : {}),
+      '*': VariableDeclaration.fake('*', this.rhs?.getContainerType(), this)
     }
   }
 }
@@ -499,7 +499,7 @@ export class DerefOp extends UnaryOpExpression {
   getType() {
     var typ = this.lhs?.getType()
     if (typ instanceof Pointer)
-      return typ.rhs.getType()
+      return typ.rhs.getContainerType()
   }
 
 }
@@ -509,7 +509,7 @@ export class DeOpt extends UnaryOpExpression {
   getType(): TypeExpression | undefined {
     var typ = this.lhs?.getType()
     if (typ instanceof Optional)
-      return typ.rhs.getType()
+      return typ.rhs.getContainerType()
   }
 
 }

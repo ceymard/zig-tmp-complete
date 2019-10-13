@@ -1,6 +1,6 @@
 import * as vsc from 'vscode';
 import { ZigHost } from './host';
-import { ContainerDeclaration, FunctionDefinition } from './ast';
+import { ContainerDeclaration, FunctionDefinition, Expression } from './ast';
 
 const ZIG_MODE: vsc.DocumentFilter = { language: 'zig', scheme: 'file' }
 const K = vsc.CompletionItemKind
@@ -17,6 +17,8 @@ export function activate(ctx: vsc.ExtensionContext) {
 			'.'
 		)
 	)
+
+	ctx.subscriptions.push(vsc.languages.registerDefinitionProvider(ZIG_MODE, helper))
 }
 
 // this method is called when your extension is deactivated
@@ -37,7 +39,7 @@ function trylog(def?: any) {
 	}
 }
 
-export class ZigLanguageHelper implements vsc.CompletionItemProvider {
+export class ZigLanguageHelper implements vsc.CompletionItemProvider, vsc.DefinitionProvider {
 
 	host!: ZigHost
 	channel = vsc.window.createOutputChannel('zig-tmp-completion')
@@ -83,5 +85,18 @@ export class ZigLanguageHelper implements vsc.CompletionItemProvider {
 				r.commitCharacters = ['.', '(', ')', ',', ';']
 				return r
 			})
+	}
+
+	@trylog(null)
+	provideDefinition(doc: vsc.TextDocument, pos: vsc.Position) {
+		const offset = doc.offsetAt(pos)
+		const f = this.host.addFile(doc.fileName, doc.getText())
+		const n = f.scope.getNodeAt(offset) as Expression // to check for pubs.
+		const r = n?.getType()
+		if (!r) return null
+		return new vsc.Location(
+			vsc.Uri.file(r.file_block.file.path),
+			new vsc.Position(r.range[0].line, r.range[0].col)
+		)
 	}
 }
