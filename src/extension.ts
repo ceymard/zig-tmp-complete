@@ -1,6 +1,6 @@
 import * as vsc from 'vscode';
 import { ZigHost } from './host';
-import { ContainerDeclaration, FunctionDefinition, Expression } from './ast';
+import { ContainerDeclaration, FunctionDefinition, Expression, Identifier, DotBinOp } from './ast';
 
 const ZIG_MODE: vsc.DocumentFilter = { language: 'zig', scheme: 'file' }
 const K = vsc.CompletionItemKind
@@ -66,7 +66,9 @@ export class ZigLanguageHelper implements vsc.CompletionItemProvider, vsc.Defini
 		// this completion plugin works with offsets, not line / col
 		const offset = doc.offsetAt(pos)
 		const f = this.host.addFile(doc.fileName, doc.getText())
-		const n = f.scope.getNodeAt(offset) // to check for pubs.
+		var n = f.scope.getNodeAt(offset) // to check for pubs.
+		if (n instanceof Identifier && n.parent instanceof DotBinOp && n.parent.rhs === n)
+			n = n.parent.lhs as Expression
 		return n.getCompletions()
 			.filter(c => {
 				// return true

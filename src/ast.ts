@@ -182,7 +182,7 @@ export class Identifier extends Literal {
 
   getType(): TypeExpression | undefined {
     if (this.parent instanceof DotBinOp && this.parent.rhs === this) {
-      return this.parent.lhs?.getType()
+      return this.parent.getType()
     }
     return this.getDeclaration()?.getType()
   }
