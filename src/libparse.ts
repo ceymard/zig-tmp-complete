@@ -667,12 +667,12 @@ export class Node {
    * Query the tree upwards to get a node of a certain type.
    * @param t The kind of node we're looking for
    */
-  queryParent<T extends {new(...a: any[]): Node}>(t: T): InstanceType<T> | null {
+  queryParent<T extends {new(...a: any[]): Node}>(t: T): InstanceType<T> | undefined {
     if (this.parent) {
-      if (this.parent.constructor === t)
+      if (this.parent instanceof t)
         return this.parent as any
-      return this.parent.queryParent(t)
-    } else return this as any
-    return null
+      else
+        return (this.parent as any).queryParent(t)
+    } else return undefined
   }
 }

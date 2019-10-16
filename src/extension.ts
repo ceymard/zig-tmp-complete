@@ -1,6 +1,6 @@
 import * as vsc from 'vscode';
 import { ZigHost } from './host';
-import { ContainerDefinition, FunctionDefinition, Expression, Identifier, DotBinOp, ContainerField, Block, Operator } from './ast';
+import { ContainerDefinition, FunctionDefinition, Expression, Identifier, DotBinOp, ContainerField, Block, Operator, FileBlock, UnionDeclaration, EnumDefinition, Declaration } from './ast';
 
 const ZIG_MODE: vsc.DocumentFilter = { language: 'zig', scheme: 'file' }
 const K = vsc.CompletionItemKind
@@ -67,16 +67,21 @@ export class ZigLanguageHelper implements vsc.CompletionItemProvider, vsc.Defini
 		const offset = doc.offsetAt(pos)
 		const f = this.host.addFile(doc.fileName, doc.getText())
 		var n = f.scope.getNodeAt(offset) // to check for pubs.
-		if (n instanceof Identifier && !(n.parent instanceof DotBinOp))
-			n = n.queryParent(Block)!
+
+		// if (n instanceof )
+
+		var declarations: Declaration[] = []
 
 		// This is when trying to complete something in a dotbinop expression
 		if (n instanceof Identifier && n.parent instanceof DotBinOp && n.parent.rhs === n
 			|| n instanceof Operator && n.value === '.' && n.parent instanceof DotBinOp)
-			n = n.parent.lhs as Expression
+			declarations = n.parent.lhs?.getCompletions() ?? declarations
+		else
+			declarations = n.getAvailableNames()
 
+		this.log(`decls: ${declarations.map(d => d.name.value).join(", ")}`)
 		// The rest of the cases should try to get block-level declared variables.
-		return n.getCompletions()
+		return declarations
 			.filter(c => {
 				// only keep completions that are from the same file or that are public.
 				return c.pub || c.file_block.file.path === doc.fileName
@@ -87,13 +92,24 @@ export class ZigLanguageHelper implements vsc.CompletionItemProvider, vsc.Defini
 
 				const def = c.getDefinition()
 				if (def) {
+					const d = def.doc()
+					if (d)
+						r.documentation = d
 					// this.log(c.constructor.name + ' - ' + typ.constructor.name)
-					const rep = def.repr()
-					r.label = r.label + ': ' + rep
-					r.detail = rep
+					if (def instanceof FileBlock) {
+						r.detail = 'File: ' + def.file.path
+					} else {
+						const rep = def.repr()
+						// r.label = r.label + ': ' + rep
+						r.detail = rep
+					}
 				}
 
-				if (def instanceof ContainerDefinition)
+				if (def instanceof FileBlock)
+					r.kind = K.File
+				else if (def instanceof EnumDefinition)
+					r.kind = K.Enum
+				else if (def instanceof ContainerDefinition)
 					r.kind = K.Struct
 				else if (def instanceof FunctionDefinition)
 					r.kind = K.Function

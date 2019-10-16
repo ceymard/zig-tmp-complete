@@ -662,10 +662,10 @@ export const CONTAINER_DECL = SeqObj({
     SeqObj({
             kw_enum,
             opt_type: Opt(S`( ${EXPRESSION} )`)
-    }).map(r => new a.EnumDeclaration().set('opt_type', r.opt_type)),
+    }).map(r => new a.EnumDefinition().set('opt_type', r.opt_type)),
     SeqObj({
             kw_struct
-    }).map(r => new a.StructDeclaration()),
+    }).map(r => new a.StructDefinition()),
     SeqObj({
             kw_union,
             opt_enum: Opt(S`( ${Either(

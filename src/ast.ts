@@ -42,9 +42,13 @@ export class ZigNode extends Node {
   getAvailableNames(): Names {
     var own = this.getOwnNames()
     if (this.parent) {
-      own = Object.assign(this.parent.getAvailableNames(), own)
+      own = [...this.parent.getAvailableNames(), ...own]
     }
     return own
+  }
+
+  getDeclaration(name: string): Declaration | undefined {
+    return this.getAvailableNames().filter(d => d.name.value === name)[0]
   }
 
   getOwnNames(): Names {
@@ -91,6 +95,11 @@ export class Definition extends Expression {
     if (this instanceof ContainerDefinition)
       return new ContainerType(this)
     return this
+  }
+
+  doc() {
+    const p = this.queryParent(Declaration) // try to find out if we have a declaration
+    return p?.doc ?? ''
   }
 
   getDefinition() {
@@ -194,12 +203,7 @@ export class Identifier extends Literal {
   repr() { return this.value }
 
   getDefinition() {
-    return this.getDeclaration()?.getDefinition()
-  }
-
-  getDeclaration(): Declaration | undefined {
-    // this.log(this.value + ' => ' + Object.keys(this.getAvailableNames()).join(", "))
-    return this.getAvailableNames().filter(s => s.name.value === this.value)[0]
+    return this.getDeclaration(this.value)?.getDefinition()
   }
 
 }
@@ -253,7 +257,9 @@ export class BuiltinFunctionCall extends Expression {
     }
     if (this.name === '@This') {
       // Get the current container.
-      return this.queryParent(ContainerDefinition) ?? undefined
+      var res = this.queryParent(ContainerDefinition) ?? undefined
+      this.log('@This() ' + res?.constructor.name)
+      return res
     }
     return
   }
@@ -302,7 +308,7 @@ export class FunctionPrototype extends Expression {
   return_type: Opt<Expression>
   pub = false
 
-  repr() { return `(${this.args.map(a => a.repr()).join(', ')}) ${this.return_type?.repr() || '#n/a'}` }
+  repr() { return `fn (${this.args.map(a => a.repr()).join(', ')}) ${this.return_type?.repr() || '#n/a'}` }
 
   // getReturnType(): TypeExpression | undefined {
   //   const p = this.parent
@@ -332,7 +338,7 @@ export class FunctionDefinition extends Definition {
     if (!typ) return false
     if (typ instanceof PointerDefinition) {
       const pointed = typ.rhs?.getDefinition()
-      return pointed === t
+      return pointed === t || pointed instanceof ContainerType && pointed.cont === t
     }
     return typ === t
   }
@@ -415,12 +421,12 @@ export class ContainerDefinition extends Definition {
 }
 
 
-export class EnumDeclaration extends ContainerDefinition {
+export class EnumDefinition extends ContainerDefinition {
   opt_type = null as Expression | null
 }
 
 
-export class StructDeclaration extends ContainerDefinition {
+export class StructDefinition extends ContainerDefinition {
 
 }
 
@@ -454,7 +460,8 @@ export type TypeModifiers = {
 
 export namespace TypeModifiers {
   export function repr(t: TypeModifiers) {
-    return Object.keys(t).join(' ') + ' '
+    const r = Object.keys(t).join(' ')
+    return r ? r + ' ' : r
   }
 }
 
@@ -533,7 +540,7 @@ export class ArrayOrSliceDefinition extends Definition {
 /**
  *
  */
-export class FileBlock extends StructDeclaration {
+export class FileBlock extends StructDefinition {
 
   file!: File
 
@@ -624,6 +631,10 @@ export class CatchOperator extends Operator {
 export class DotBinOp extends BinOpExpression {
 
   rhs: Opt<Identifier>
+
+  getDefinition() {
+    return this.lhs?.getDefinition()?.getMembers().filter(m => m.name.value === this.rhs?.value)[0]?.getDefinition()
+  }
 
   // getDefinition() {
 
