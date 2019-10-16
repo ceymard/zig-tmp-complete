@@ -71,7 +71,7 @@ export class ZigLanguageHelper implements vsc.CompletionItemProvider, vsc.Defini
 		// if (n instanceof )
 
 		var declarations: Declaration[] = []
-		this.log(`@offset: ${offset}`)
+		this.log(`@offset: ${offset} - ${n.constructor.name} - ${n.range.map(n => n.offset).join('-')}`)
 
 		// This is when trying to complete something in a dotbinop expression
 		if (

@@ -237,7 +237,7 @@ export class FunctionCall extends TypeExpression {
     const typ = this.lhs.getDefinition()
     if (typ instanceof FunctionDefinition) {
       typ.current_args = this.args.args
-      return typ.proto.return_type?.getDefinition()
+      return typ.proto.getReturnTypeDefinition()
       // return typ.proto.return_type?.getType(true)
     }
     return undefined
@@ -284,20 +284,20 @@ export class BuiltinFunctionCall extends Expression {
 export class FunctionArgumentDeclaration extends Declaration {
   comptime = false
 
-  // getType() {
-  //   // check if the type is comptime
-  //   if (this.comptime && this.type instanceof PrimitiveType && this.type.name.value === 'type') {
-  //     const proto = this.parent
-  //     if (!(proto instanceof FunctionPrototype)) return;
-  //     const def = proto.parent
-  //     if (!(def instanceof FunctionDefinition)) return;
-  //     if (!def.current_args) return;
-  //     const idx = def.proto.args.indexOf(this)
-  //     return def.current_args[idx]?.getType()
-  //   }
+  getDefinition() {
+    // check if the type is comptime
+    if (this.comptime && this.type instanceof PrimitiveType && this.type.name.value === 'type') {
+      const proto = this.parent
+      if (!(proto instanceof FunctionPrototype)) return;
+      const def = proto.parent
+      if (!(def instanceof FunctionDefinition)) return;
+      if (!def.current_args) return;
+      const idx = def.proto.args.indexOf(this)
+      return def.current_args[idx]?.getDefinition()
+    }
 
-  //   return super.getType()
-  // }
+    return super.getDefinition()
+  }
 
 }
 
@@ -310,6 +310,13 @@ export class FunctionPrototype extends Expression {
   pub = false
 
   repr() { return `fn (${this.args.map(a => a.repr()).join(', ')}) ${this.return_type?.repr() || '#n/a'}` }
+
+  getReturnTypeDefinition() {
+    const p = this.parent
+    if (p instanceof FunctionDefinition && p.returns.length > 0) {
+      return p.returns[0].exp?.getDefinition()
+    }
+  }
 
   // getReturnType(): TypeExpression | undefined {
   //   const p = this.parent
@@ -380,7 +387,7 @@ export class ContainerDefinition extends Definition {
   members: ZigNode[] = []
 
   repr() {
-    const p = this.queryParent(VariableDeclaration)
+    var p = this.queryParent(VariableDeclaration)
     if (p) return `${p.name?.value}`
     // const p = this.queryParent()
     return '#n/a'
@@ -636,7 +643,7 @@ export class DotBinOp extends BinOpExpression {
   getDefinition() {
     const v = this.rhs?.value
     if (!v) return undefined
-    // this.log('what' + v)
+    // this.log('get: ' + v)
     return this.lhs?.getDefinition()?.getMembers().filter(m => m.name.value === v)[0]?.getDefinition()
   }
 

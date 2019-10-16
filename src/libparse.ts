@@ -654,12 +654,21 @@ export class Node {
   }
 
   getNodeAt(offset: number): Node {
+    // We want to find the
+    var best_match: Node | undefined
     for (var c of this.children) {
+      if (!c.range) continue
+      var [start, end] = c.range
       // console.log(c.constructor.name, c.range)
-      if (c.range && (c.range[0].offset <= offset && offset <= c.range[1].offset)) {
+      if (start.offset <= offset && offset <= end.offset)
         return c.getNodeAt(offset)
+      if (start.offset <= offset) {
+        if (!best_match || best_match.range[0].offset < start.offset)
+          best_match = c
       }
     }
+    if (best_match)
+      return best_match.getNodeAt(offset)
     return this
   }
 
