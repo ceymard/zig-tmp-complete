@@ -135,7 +135,7 @@ export class ZigLanguageHelper implements vsc.CompletionItemProvider, vsc.Defini
 		const offset = doc.offsetAt(pos)
 		const f = this.host.addFile(doc.fileName, doc.getText())
 		const n = f.scope.getNodeAt(offset) as Expression // to check for pubs.
-		const r = n?.getDefinition()
+		const r = n instanceof Identifier && n.parent instanceof DotBinOp ? n.parent.lhs?.getDefinition() : n?.getDefinition()
 		if (!r) return null
 		return new vsc.Location(
 			vsc.Uri.file(r.file_block.file.path),

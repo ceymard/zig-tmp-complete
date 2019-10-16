@@ -259,7 +259,7 @@ export class BuiltinFunctionCall extends Expression {
     if (this.name === '@This') {
       // Get the current container.
       var res = this.queryParent(ContainerDefinition) ?? undefined
-      this.log('@This() ' + res?.constructor.name)
+      // this.log('@This() ' + res?.constructor.name)
       return res
     }
     return
@@ -489,6 +489,8 @@ export class Pointer extends Expression {
   rhs!: Expression
   kind!: string
   modifiers: TypeModifiers = {}
+
+  repr() { return `${this.kind}${TypeModifiers.repr(this.modifiers)}${this.rhs.repr()}` }
 
   getDefinition() {
     return new PointerDefinition(this.kind, this.modifiers, this.rhs.getDefinition()?.getContainerType())
