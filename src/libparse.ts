@@ -656,7 +656,7 @@ export class Node {
   getNodeAt(offset: number): Node {
     for (var c of this.children) {
       // console.log(c.constructor.name, c.range)
-      if (c.range && (c.range[0].offset <= offset && offset <= c.range[1].offset + c.range[1].length)) {
+      if (c.range && (c.range[0].offset <= offset && offset <= c.range[1].offset)) {
         return c.getNodeAt(offset)
       }
     }

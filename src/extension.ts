@@ -71,13 +71,19 @@ export class ZigLanguageHelper implements vsc.CompletionItemProvider, vsc.Defini
 		// if (n instanceof )
 
 		var declarations: Declaration[] = []
+		this.log(`@offset: ${offset}`)
 
 		// This is when trying to complete something in a dotbinop expression
-		if (n instanceof Identifier && n.parent instanceof DotBinOp && n.parent.rhs === n
-			|| n instanceof Operator && n.value === '.' && n.parent instanceof DotBinOp)
+		if (
+			n instanceof Identifier && n.parent instanceof DotBinOp && n.parent.rhs === n
+			|| n instanceof Operator && n.value === '.' && n.parent instanceof DotBinOp
+		) {
+			this.log('completions ' + n.parent.lhs?.constructor.name)
 			declarations = n.parent.lhs?.getCompletions() ?? declarations
-		else
+		} else {
+			this.log('available names')
 			declarations = n.getAvailableNames()
+		}
 
 		this.log(`decls: ${declarations.map(d => d.name.value).join(", ")}`)
 		// The rest of the cases should try to get block-level declared variables.

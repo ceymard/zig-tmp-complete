@@ -73,7 +73,7 @@ export class Expression extends ZigNode {
    *   - Function calls
    */
   getDefinition(): Definition | undefined {
-    this.log('!')
+    this.log('getDefinition not implemented')
     return
   }
 
@@ -203,6 +203,7 @@ export class Identifier extends Literal {
   repr() { return this.value }
 
   getDefinition() {
+    // this.log(this.value)
     return this.getDeclaration(this.value)?.getDefinition()
   }
 
@@ -633,7 +634,10 @@ export class DotBinOp extends BinOpExpression {
   rhs: Opt<Identifier>
 
   getDefinition() {
-    return this.lhs?.getDefinition()?.getMembers().filter(m => m.name.value === this.rhs?.value)[0]?.getDefinition()
+    const v = this.rhs?.value
+    if (!v) return undefined
+    // this.log('what' + v)
+    return this.lhs?.getDefinition()?.getMembers().filter(m => m.name.value === v)[0]?.getDefinition()
   }
 
   // getDefinition() {
