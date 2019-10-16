@@ -18,7 +18,7 @@ export function print_node(n: Node, indent = '', prefix = '') {
     suppl.push(ch.red(n.value))
   else if (n instanceof a.VariableDeclaration) {
     var co = ch.bold
-    if (n.value instanceof a.ContainerDeclaration)
+    if (n.value instanceof a.ContainerDefinition)
       co = co.bgRedBright
     else if (n.value instanceof a.FunctionDefinition)
       co = co.bgGreenBright.black

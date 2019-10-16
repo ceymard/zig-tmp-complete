@@ -1,6 +1,6 @@
 import * as vsc from 'vscode';
 import { ZigHost } from './host';
-import { ContainerDeclaration, FunctionDefinition, Expression, Identifier, DotBinOp, ContainerField } from './ast';
+import { ContainerDefinition, FunctionDefinition, Expression, Identifier, DotBinOp, ContainerField, Block, Operator } from './ast';
 
 const ZIG_MODE: vsc.DocumentFilter = { language: 'zig', scheme: 'file' }
 const K = vsc.CompletionItemKind
@@ -67,28 +67,35 @@ export class ZigLanguageHelper implements vsc.CompletionItemProvider, vsc.Defini
 		const offset = doc.offsetAt(pos)
 		const f = this.host.addFile(doc.fileName, doc.getText())
 		var n = f.scope.getNodeAt(offset) // to check for pubs.
-		if (n instanceof Identifier && n.parent instanceof DotBinOp && n.parent.rhs === n)
+		if (n instanceof Identifier && !(n.parent instanceof DotBinOp))
+			n = n.queryParent(Block)!
+
+		// This is when trying to complete something in a dotbinop expression
+		if (n instanceof Identifier && n.parent instanceof DotBinOp && n.parent.rhs === n
+			|| n instanceof Operator && n.value === '.' && n.parent instanceof DotBinOp)
 			n = n.parent.lhs as Expression
+
+		// The rest of the cases should try to get block-level declared variables.
 		return n.getCompletions()
 			.filter(c => {
-				// return true
+				// only keep completions that are from the same file or that are public.
 				return c.pub || c.file_block.file.path === doc.fileName
 			})
 			.map(c => {
 				var r = new vsc.CompletionItem(c.name.value)
 				r.insertText = c.name.value
 
-				const typ = c.getType()
-				if (typ) {
+				const def = c.getDefinition()
+				if (def) {
 					// this.log(c.constructor.name + ' - ' + typ.constructor.name)
-					const rep = typ.repr()
+					const rep = def.repr()
 					r.label = r.label + ': ' + rep
 					r.detail = rep
 				}
 
-				if (typ instanceof ContainerDeclaration)
+				if (def instanceof ContainerDefinition)
 					r.kind = K.Struct
-				else if (typ instanceof FunctionDefinition)
+				else if (def instanceof FunctionDefinition)
 					r.kind = K.Function
 				else if (c instanceof ContainerField)
 					r.kind = K.Property
@@ -106,7 +113,7 @@ export class ZigLanguageHelper implements vsc.CompletionItemProvider, vsc.Defini
 		const offset = doc.offsetAt(pos)
 		const f = this.host.addFile(doc.fileName, doc.getText())
 		const n = f.scope.getNodeAt(offset) as Expression // to check for pubs.
-		const r = n?.getType()
+		const r = n?.getDefinition()
 		if (!r) return null
 		return new vsc.Location(
 			vsc.Uri.file(r.file_block.file.path),

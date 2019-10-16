@@ -3,7 +3,7 @@ import { Node } from "./libparse"
 import { File } from './host'
 
 export type Opt<T> = T | null | undefined
-export type Names = {[name: string]: Declaration}
+export type Names = Declaration[]
 
 
 // FIXME missing Node.getDeclarations
@@ -31,9 +31,8 @@ export class ZigNode extends Node {
 
   getCompletions(): Declaration[] {
     if (!(this instanceof Expression)) return []
-    var typ = this.getType()
-    if (!typ) return []
-    return Object.values(typ.getMembers())
+    var def = this.getDefinition()
+    return Object.values(def?.getMembers() ?? {})
   }
 
   getNodeAt(n: number): ZigNode {
@@ -48,16 +47,8 @@ export class ZigNode extends Node {
     return own
   }
 
-  /**
-   * get the definition of a node, which means its type definition, when
-   * available.
-   */
-  getDeclaration(): Declaration | undefined {
-    return
-  }
-
   getOwnNames(): Names {
-    return {}
+    return []
   }
 
 }
@@ -65,15 +56,21 @@ export class ZigNode extends Node {
 
 export class Expression extends ZigNode {
 
-  getType(): TypeExpression | undefined {
+  /**
+   * For a given ast node, get the declaration corresponding to this value.
+   * The declaration might be a primitive type, or it might me a container declaration.
+   * This will mostly work on
+   *
+   *   - Identifiers
+   *   - Pointers
+   *   - Optionals
+   *   - Array access items
+   *   - exp.exp
+   *   - Function calls
+   */
+  getDefinition(): Definition | undefined {
+    this.log('!')
     return
-  }
-
-  getContainerType(): TypeExpression | undefined {
-    const typ = this.getType()
-    if (typ instanceof ContainerDeclaration)
-      return new ContainerType(typ)
-    return typ
   }
 
   getOriginalDeclaration() {
@@ -85,15 +82,32 @@ export class Expression extends ZigNode {
 }
 
 
-export class TypeExpression extends Expression {
+export class Definition extends Expression {
 
-  getType(): TypeExpression | undefined {
+  /**
+   * Only used when in a :type arm.
+   */
+  getContainerType(): Definition | undefined {
+    if (this instanceof ContainerDefinition)
+      return new ContainerType(this)
+    return this
+  }
+
+  getDefinition() {
     return this
   }
 
   getMembers(): Names {
-    return {}
+    return []
   }
+
+  repr() { return '?n/a' }
+
+}
+
+
+
+export class TypeExpression extends Expression {
 
 }
 
@@ -109,16 +123,8 @@ export class Declaration extends Expression {
 
   repr() { return `${this.name?.value}: ${this.type?.repr() || '#n/a'}` }
 
-  getType(): TypeExpression | undefined {
-    if (this.type) {
-      // console.log(this.name.value);
-      return this.type.getContainerType() as TypeExpression
-    }
-
-    if (this.value) {
-      return this.value.getType()
-    }
-    return
+  getDefinition(): Definition | undefined {
+    return this.type?.getDefinition()?.getContainerType() ?? this.value?.getDefinition()
   }
 
 }
@@ -139,10 +145,10 @@ export class Block extends Expression {
   breaks: Expression[] = []
 
   getOwnNames(): Names {
-    var res = {} as Names
+    var res = [] as Names
     for (var s of this.statements) {
       if (s instanceof Declaration)
-        res[s.name.value] = s
+        res.push(s)
     }
     return res
   }
@@ -187,16 +193,13 @@ export class Identifier extends Literal {
 
   repr() { return this.value }
 
-  getType(): TypeExpression | undefined {
-    if (this.parent instanceof DotBinOp && this.parent.rhs === this) {
-      return this.parent.getType()
-    }
-    return this.getDeclaration()?.getType()
+  getDefinition() {
+    return this.getDeclaration()?.getDefinition()
   }
 
-  getDeclaration() {
+  getDeclaration(): Declaration | undefined {
     // this.log(this.value + ' => ' + Object.keys(this.getAvailableNames()).join(", "))
-    return this.getAvailableNames()[this.value] || null
+    return this.getAvailableNames().filter(s => s.name.value === this.value)[0]
   }
 
 }
@@ -207,7 +210,7 @@ export class BooleanLiteral extends Literal { }
 export class IntegerLiteral extends Literal { }
 export class FloatLiteral extends Literal { }
 
-export class PrimitiveType extends TypeExpression {
+export class PrimitiveType extends Definition {
   name!: Identifier
   repr() { return this.name?.value || '??' }
 }
@@ -224,12 +227,12 @@ export class FunctionCall extends TypeExpression {
   lhs!: Expression
   args!: ExpressionList<Expression>
 
-  getType() {
+  getDefinition() {
     // maybe store args in a weakref to have a reference to the result somewhere
-    const typ = this.lhs.getType()
+    const typ = this.lhs.getDefinition()
     if (typ instanceof FunctionDefinition) {
       typ.current_args = this.args.args
-      return typ.proto.getReturnType()
+      return typ.proto.return_type?.getDefinition()
       // return typ.proto.return_type?.getType(true)
     }
     return undefined
@@ -241,44 +244,53 @@ export class BuiltinFunctionCall extends Expression {
   name = ''
   args!: ExpressionList<Expression>
 
-  getType(): TypeExpression | undefined {
+  getDefinition(): Definition | undefined {
     if (this.name === '@import' && this.args.args.length === 1) {
       return this.handleImport()
     }
-    return;
+    if (this.name === '@cImport') {
+      return this.handleCImport()
+    }
+    if (this.name === '@This') {
+      // Get the current container.
+      return this.queryParent(ContainerDefinition) ?? undefined
+    }
+    return
   }
 
-  handleImport(): TypeExpression | undefined {
+  handleCImport(): Definition | undefined {
     const fb = this.queryParent(FileBlock)
-    if (!fb) return
+    return fb?.file.host.getCFile(fb.file.path)?.scope
+  }
+
+  handleImport(): Definition | undefined {
     const a = this.args.args[0]
     if (!(a instanceof StringLiteral)) return
-    const res = fb.file.host.getZigFile(fb.file.path, a.value.slice(1, -1))
-    // filter publics ???
-    return res?.scope.getType()
+    const fb = this.queryParent(FileBlock)
+    return fb?.file.host.getZigFile(fb.file.path, a.value.slice(1, -1))?.scope
   }
 
 }
 
 ////////////////////////////////////////////////////////
 
-export class FunctionArgumentDefinition extends Declaration {
+export class FunctionArgumentDeclaration extends Declaration {
   comptime = false
 
-  getType() {
-    // check if the type is comptime
-    if (this.comptime && this.type instanceof PrimitiveType && this.type.name.value === 'type') {
-      const proto = this.parent
-      if (!(proto instanceof FunctionPrototype)) return;
-      const def = proto.parent
-      if (!(def instanceof FunctionDefinition)) return;
-      if (!def.current_args) return;
-      const idx = def.proto.args.indexOf(this)
-      return def.current_args[idx]?.getType()
-    }
+  // getType() {
+  //   // check if the type is comptime
+  //   if (this.comptime && this.type instanceof PrimitiveType && this.type.name.value === 'type') {
+  //     const proto = this.parent
+  //     if (!(proto instanceof FunctionPrototype)) return;
+  //     const def = proto.parent
+  //     if (!(def instanceof FunctionDefinition)) return;
+  //     if (!def.current_args) return;
+  //     const idx = def.proto.args.indexOf(this)
+  //     return def.current_args[idx]?.getType()
+  //   }
 
-    return super.getType()
-  }
+  //   return super.getType()
+  // }
 
 }
 
@@ -286,24 +298,19 @@ export class FunctionArgumentDefinition extends Declaration {
 export class FunctionPrototype extends Expression {
   extern = false
   ident: Opt<Identifier>
-  args = [] as FunctionArgumentDefinition[]
+  args = [] as FunctionArgumentDeclaration[]
   return_type: Opt<Expression>
   pub = false
 
   repr() { return `(${this.args.map(a => a.repr()).join(', ')}) ${this.return_type?.repr() || '#n/a'}` }
 
-  getReturnType(): TypeExpression | undefined {
-    const p = this.parent
-    if (p instanceof FunctionDefinition && p.returns.length > 0) {
-      var r = p.returns[0].exp?.getType()
-      return r
-    }
-  }
-
-}
-
-
-export class Definition extends Expression {
+  // getReturnType(): TypeExpression | undefined {
+  //   const p = this.parent
+  //   if (p instanceof FunctionDefinition && p.returns.length > 0) {
+  //     var r = p.returns[0].exp?.getType()
+  //     return r
+  //   }
+  // }
 
 }
 
@@ -318,27 +325,23 @@ export class FunctionDefinition extends Definition {
 
   repr() { return this.proto.repr() }
 
-  firstArgIsContainer(t: Expression) {
+  firstArgIsContainer(t: Definition) {
     const a = this.proto.args
     if (!a[0]) return false
-    const typ = a[0].type?.getType()
+    const typ = a[0].type?.getDefinition()
     if (!typ) return false
-    if (typ instanceof Pointer) {
-      const pointed = typ.rhs.getType()
+    if (typ instanceof PointerDefinition) {
+      const pointed = typ.rhs?.getDefinition()
       return pointed === t
     }
     return typ === t
   }
 
-  getType() {
-    return this as any
-  }
-
   getOwnNames(): Names {
-    var res = {} as Names
+    var res = [] as Names
     for (var a of this.proto.args) {
       if (!a.name) continue
-      res[a.name.value] = a
+      res.push(a)
     }
     return res
   }
@@ -363,7 +366,7 @@ export class ContainerField extends Declaration {
 
 
 // FIXME should extend block to reuse the importnamespace
-export class ContainerDeclaration extends Definition {
+export class ContainerDefinition extends Definition {
   extern = false
   packed = false
 
@@ -376,15 +379,11 @@ export class ContainerDeclaration extends Definition {
     return '#n/a'
   }
 
-  getType(): TypeExpression | undefined {
-    return this
-  }
-
   getOwnNames() {
-    var res = {} as Names
+    var res = [] as Names
     for (var s of this.members)
       if (s instanceof Declaration && !(s instanceof ContainerField))
-        res[s.name.value] = s
+        res.push(s)
     return res
   }
 
@@ -394,11 +393,11 @@ export class ContainerDeclaration extends Definition {
 
   getContainerNames(): Names {
     // Members of a container are its very own declarations, not all the ones in scope.
-    var res = {} as Names
+    var res = [] as Names
     for (var s of this.members) {
       if (s instanceof Declaration && s instanceof ContainerField ||
         s instanceof VariableDeclaration && s.value instanceof FunctionDefinition && s.value.firstArgIsContainer(this)) {
-        res[s.name.value] = s
+        res.push(s)
       }
     }
     return res
@@ -408,7 +407,7 @@ export class ContainerDeclaration extends Definition {
     var res = {} as Names
     for (var m of this.members) {
       if (m instanceof ContainerField)
-        res[m.name.value] = m
+        res.push(m)
     }
     return res
   }
@@ -416,17 +415,17 @@ export class ContainerDeclaration extends Definition {
 }
 
 
-export class EnumDeclaration extends ContainerDeclaration {
+export class EnumDeclaration extends ContainerDefinition {
   opt_type = null as Expression | null
 }
 
 
-export class StructDeclaration extends ContainerDeclaration {
+export class StructDeclaration extends ContainerDefinition {
 
 }
 
 
-export class UnionDeclaration extends ContainerDeclaration {
+export class UnionDeclaration extends ContainerDefinition {
   opt_enum = null as Expression | null
 }
 
@@ -453,6 +452,12 @@ export type TypeModifiers = {
   allowzero?: Opt<boolean>
 }
 
+export namespace TypeModifiers {
+  export function repr(t: TypeModifiers) {
+    return Object.keys(t).join(' ') + ' '
+  }
+}
+
 
 export class PromiseType extends Expression {
   rhs!: Expression
@@ -463,15 +468,6 @@ export class Optional extends Expression {
 
   repr() { return `?${this.rhs.repr()}` }
 
-  getType() {
-    return this as any
-  }
-
-  getMembers(): Names {
-    return {
-      '?': VariableDeclaration.fake('?', this.rhs?.getContainerType(), this)
-    }
-  }
 }
 
 export class Pointer extends Expression {
@@ -479,26 +475,31 @@ export class Pointer extends Expression {
   kind!: string
   modifiers: TypeModifiers = {}
 
-  repr() {
-    const mods = Object.keys(this.modifiers).join(' ')
-    return `${this.kind}${mods ? mods + ' ' : ''}${this.rhs.repr()}`
+  getDefinition() {
+    return new PointerDefinition(this.kind, this.modifiers, this.rhs.getDefinition()?.getContainerType())
   }
 
-  getType() {
-    return this
-  }
+}
 
-  getMembers(): Names {
-    return {
-      ...(this.kind === '*' ? this.rhs?.getContainerType()?.getMembers() || {} : {}),
-      '*': VariableDeclaration.fake('*', this.rhs?.getContainerType(), this)
-    }
+
+// Used to get members
+export class PointerDefinition extends Definition {
+  constructor(public kind: string, public modifiers: TypeModifiers, public rhs?: Definition) { super () }
+
+  repr() { return `${this.kind}${TypeModifiers.repr(this.modifiers)}${this.rhs?.repr() ?? '?n/a'}` }
+
+  getMembers() {
+    return [
+      ...(this.kind !== '*' ? [] : this.rhs?.getMembers() ?? []),
+      VariableDeclaration.fake('*', this.rhs, this)
+    ]
   }
 }
 
 export class Reference extends Expression {
   rhs!: Expression
 }
+//FIXME missing ReferenceDefinition
 
 // ????
 export class ArrayOrSliceDeclaration extends Expression {
@@ -511,17 +512,22 @@ export class ArrayOrSliceDeclaration extends Expression {
     return `[${this.number?.repr() || ''}]${mods ? mods + ' ' : ''}${this.rhs.repr()}`
   }
 
-  getType() {
-    return this as any
+  getDefinition() {
+    return new ArrayOrSliceDefinition(this.number, this.modifiers, this.rhs.getDefinition()?.getContainerType())
   }
 
   getMembers(): Names {
-    return {
-      'len': VariableDeclaration.fake('len', new PrimitiveType().set('name', new Identifier().set('value', 'u32')), this),// FIXME should be some kind of int
-      'ptr': VariableDeclaration.fake('ptr', new Pointer().set('rhs', this.rhs).set('kind', '[*]'), this)// FIXME should be some kind of int
-    }
+    return [
+      VariableDeclaration.fake('len', new PrimitiveType().set('name', new Identifier().set('value', 'u32')), this),// FIXME should be some kind of int
+      VariableDeclaration.fake('ptr', new Pointer().set('rhs', this.rhs).set('kind', '[*]'), this)// FIXME should be some kind of int
+    ]
   }
+}
 
+export class ArrayOrSliceDefinition extends Definition {
+  constructor(public number: Expression | undefined | null, public modifiers: TypeModifiers, public def?: Definition) { super() }
+
+  repr() { return `[${this.number ? '_' : ''}]${TypeModifiers.repr(this.modifiers)}${this.def?.repr() ?? '?n/a'}` }
 }
 
 /**
@@ -544,21 +550,21 @@ export class UnaryOpExpression extends Expression {
 // .*
 export class DerefOp extends UnaryOpExpression {
 
-  getType() {
-    var typ = this.lhs?.getType()
-    if (typ instanceof Pointer)
-      return typ.rhs.getContainerType()
-  }
+  // getType() {
+  //   var typ = this.lhs?.getType()
+  //   if (typ instanceof Pointer)
+  //     return typ.rhs.getContainerType()
+  // }
 
 }
 // .?
 export class DeOpt extends UnaryOpExpression {
 
-  getType(): TypeExpression | undefined {
-    var typ = this.lhs?.getType()
-    if (typ instanceof Optional)
-      return typ.rhs.getContainerType()
-  }
+  // getType(): TypeExpression | undefined {
+  //   var typ = this.lhs?.getType()
+  //   if (typ instanceof Optional)
+  //     return typ.rhs.getContainerType()
+  // }
 
 }
 // !
@@ -567,13 +573,13 @@ export class NotOpt extends UnaryOpExpression { }
 export class Operator extends Expression {
   value = ''
 
-  getType() {
-    const p = this.parent
-    if (p instanceof DotBinOp && p.lhs) {
-      return p.lhs.getType()
-    }
-    return undefined
-  }
+  // getType() {
+  //   const p = this.parent
+  //   if (p instanceof DotBinOp && p.lhs) {
+  //     return p.lhs.getType()
+  //   }
+  //   return undefined
+  // }
 }
 
 export class BinOpExpression extends Expression {
@@ -619,25 +625,29 @@ export class DotBinOp extends BinOpExpression {
 
   rhs: Opt<Identifier>
 
-  getType() {
-    // ???
-    // this.log('here....')
-    if (!this.lhs || !this.rhs) return undefined
-    return this.lhs.getType()?.getMembers()[this.rhs.value]?.getType()
-  }
+  // getDefinition() {
+
+  // }
+
+  // getType() {
+  //   // ???
+  //   // this.log('here....')
+  //   if (!this.lhs || !this.rhs) return undefined
+  //   return this.lhs.getType()?.getMembers()[this.rhs.value]?.getType()
+  // }
 }
 
 // exp [ .. ]
 export class ArrayAccessOp extends BinOpExpression {
   slice: Opt<Expression>
 
-  getType(): TypeExpression | undefined {
-    if (!this.lhs) return undefined
-    const typ = this.lhs.getType()
-    if (typ instanceof ArrayOrSliceDeclaration)
-      return typ.rhs.getType()
-    return undefined
-  }
+  // getType(): TypeExpression | undefined {
+  //   if (!this.lhs) return undefined
+  //   const typ = this.lhs.getType()
+  //   if (typ instanceof ArrayOrSliceDeclaration)
+  //     return typ.rhs.getType()
+  //   return undefined
+  // }
 }
 
 
@@ -711,15 +721,12 @@ export class DeferStatement extends Expression {
   exp!: Expression
 }
 
-export class ContainerType extends TypeExpression {
-  constructor(public cont: ContainerDeclaration) {
+export class ContainerType extends Definition {
+  constructor(public cont: ContainerDefinition) {
     super()
   }
 
   repr() { return this.cont.repr() }
-  getType() {
-    return this
-  }
 
   getMembers(): Names {
     return this.cont.getContainerNames()

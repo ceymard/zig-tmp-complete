@@ -498,7 +498,7 @@ export const FUNCTION_ARGUMENT = SeqObj({
   type:     Either(TYPE_EXPRESSION, DOT3, VAR),
 })
 .map(r =>
-  new a.FunctionArgumentDefinition()
+  new a.FunctionArgumentDeclaration()
     .set('name', r.ident!)
     .set('type', r.type)
     .set('comptime', !!r.opts.comptime)
@@ -676,7 +676,7 @@ export const CONTAINER_DECL = SeqObj({
   ),
   members: S`{ ${() => CONTAINER_MEMBERS} }`,
 })
-.map(r => (r.kind as a.ContainerDeclaration)
+.map(r => (r.kind as a.ContainerDefinition)
   .set('members', r.members)
   .set('packed', !!r.qualifiers.kw_packed)
   .set('extern', !!r.qualifiers.kw_extern)

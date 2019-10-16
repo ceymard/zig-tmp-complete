@@ -55,7 +55,7 @@ export class ZigHost {
    * Get several c files, generally imports
    */
   getCFile(fromfile: string): File | null {
-    // FIXME
+    // FIXME ; should recursively look for a zig_cache instead of just looking in the same directory.
     const zig_cache_dir = pth.resolve(fromfile, `zig-cache${pth.sep}o`)
     var dirs = fs.readdirSync(zig_cache_dir)
     var fnames = [] as {ms: number, path: string}[]
