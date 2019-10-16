@@ -80,6 +80,8 @@ export class Expression extends ZigNode {
 
   }
 
+  repr() { return '#n/a' + this.constructor.name }
+
 }
 
 
@@ -104,6 +106,8 @@ export class Declaration extends Expression {
   name!: Identifier
   type: Opt<Expression>
   value: Opt<Expression> // when used with extern, there may not be a value
+
+  repr() { return `${this.name?.value}: ${this.type?.repr() || '#n/a'}` }
 
   getType(): TypeExpression | undefined {
     if (this.type) {
@@ -174,11 +178,14 @@ export class False extends Expression { }
 
 export class Literal extends Expression {
   value = ''
+  repr() { return this.value }
 }
 
 export class Identifier extends Literal {
 
   doc: Opt<string>
+
+  repr() { return this.value }
 
   getType(): TypeExpression | undefined {
     if (this.parent instanceof DotBinOp && this.parent.rhs === this) {
@@ -188,6 +195,7 @@ export class Identifier extends Literal {
   }
 
   getDeclaration() {
+    // this.log(this.value + ' => ' + Object.keys(this.getAvailableNames()).join(", "))
     return this.getAvailableNames()[this.value] || null
   }
 
@@ -201,6 +209,7 @@ export class FloatLiteral extends Literal { }
 
 export class PrimitiveType extends TypeExpression {
   name!: Identifier
+  repr() { return this.name?.value || '??' }
 }
 
 export class TypeType extends TypeExpression { }
@@ -281,6 +290,8 @@ export class FunctionPrototype extends Expression {
   return_type: Opt<Expression>
   pub = false
 
+  repr() { return `(${this.args.map(a => a.repr()).join(', ')}) ${this.return_type?.repr() || '#n/a'}` }
+
   getReturnType(): TypeExpression | undefined {
     const p = this.parent
     if (p instanceof FunctionDefinition && p.returns.length > 0) {
@@ -304,6 +315,20 @@ export class FunctionDefinition extends Definition {
   returns: ReturnExpression[] = []
 
   current_args: Expression[] = []
+
+  repr() { return this.proto.repr() }
+
+  firstArgIsContainer(t: Expression) {
+    const a = this.proto.args
+    if (!a[0]) return false
+    const typ = a[0].type?.getType()
+    if (!typ) return false
+    if (typ instanceof Pointer) {
+      const pointed = typ.rhs.getType()
+      return pointed === t
+    }
+    return typ === t
+  }
 
   getType() {
     return this as any
@@ -344,6 +369,13 @@ export class ContainerDeclaration extends Definition {
 
   members: ZigNode[] = []
 
+  repr() {
+    const p = this.queryParent(VariableDeclaration)
+    if (p) return `${p.name?.value}`
+    // const p = this.queryParent()
+    return '#n/a'
+  }
+
   getType(): TypeExpression | undefined {
     return this
   }
@@ -363,9 +395,12 @@ export class ContainerDeclaration extends Definition {
   getContainerNames(): Names {
     // Members of a container are its very own declarations, not all the ones in scope.
     var res = {} as Names
-    for (var s of this.members)
-      if (s instanceof Declaration && s instanceof ContainerField)
+    for (var s of this.members) {
+      if (s instanceof Declaration && s instanceof ContainerField ||
+        s instanceof VariableDeclaration && s.value instanceof FunctionDefinition && s.value.firstArgIsContainer(this)) {
         res[s.name.value] = s
+      }
+    }
     return res
   }
 
@@ -426,6 +461,8 @@ export class PromiseType extends Expression {
 export class Optional extends Expression {
   rhs!: Expression
 
+  repr() { return `?${this.rhs.repr()}` }
+
   getType() {
     return this as any
   }
@@ -440,7 +477,12 @@ export class Optional extends Expression {
 export class Pointer extends Expression {
   rhs!: Expression
   kind!: string
-  modifiers!: TypeModifiers
+  modifiers: TypeModifiers = {}
+
+  repr() {
+    const mods = Object.keys(this.modifiers).join(' ')
+    return `${this.kind}${mods ? mods + ' ' : ''}${this.rhs.repr()}`
+  }
 
   getType() {
     return this
@@ -448,7 +490,7 @@ export class Pointer extends Expression {
 
   getMembers(): Names {
     return {
-      ...(this.kind === '*' ? this.rhs?.getContainerType()?.getMembers() ?? {} : {}),
+      ...(this.kind === '*' ? this.rhs?.getContainerType()?.getMembers() || {} : {}),
       '*': VariableDeclaration.fake('*', this.rhs?.getContainerType(), this)
     }
   }
@@ -464,13 +506,19 @@ export class ArrayOrSliceDeclaration extends Expression {
   rhs!: Expression
   modifiers!: TypeModifiers
 
+  repr() {
+    const mods = Object.keys(this.modifiers).join(' ')
+    return `[${this.number?.repr() || ''}]${mods ? mods + ' ' : ''}${this.rhs.repr()}`
+  }
+
   getType() {
     return this as any
   }
 
   getMembers(): Names {
     return {
-      'len': VariableDeclaration.fake('len', undefined, this)// FIXME should be some kind of int
+      'len': VariableDeclaration.fake('len', new PrimitiveType().set('name', new Identifier().set('value', 'u32')), this),// FIXME should be some kind of int
+      'ptr': VariableDeclaration.fake('ptr', new Pointer().set('rhs', this.rhs).set('kind', '[*]'), this)// FIXME should be some kind of int
     }
   }
 
@@ -532,7 +580,7 @@ export class BinOpExpression extends Expression {
   operator!: Operator
   rhs: Opt<Expression>
   lhs: Opt<Expression>
-
+  repr() { return `${this.rhs?.repr() || '#n/a'}${this.operator.value}${this.lhs?.repr() || '#n/a'}` }
 }
 
 export class PayloadedExpression extends Expression {
@@ -668,6 +716,7 @@ export class ContainerType extends TypeExpression {
     super()
   }
 
+  repr() { return this.cont.repr() }
   getType() {
     return this
   }

@@ -67,7 +67,7 @@ export class Lexer {
   feed(str: string): Lexeme[] {
     var idx = 0
     var position = 0
-    var line = 1
+    var line = 0
     var col = 1
     var regexps = this.regexps
     var original_regexps = this.original_regexps

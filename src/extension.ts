@@ -1,6 +1,6 @@
 import * as vsc from 'vscode';
 import { ZigHost } from './host';
-import { ContainerDeclaration, FunctionDefinition, Expression, Identifier, DotBinOp } from './ast';
+import { ContainerDeclaration, FunctionDefinition, Expression, Identifier, DotBinOp, ContainerField } from './ast';
 
 const ZIG_MODE: vsc.DocumentFilter = { language: 'zig', scheme: 'file' }
 const K = vsc.CompletionItemKind
@@ -76,12 +76,24 @@ export class ZigLanguageHelper implements vsc.CompletionItemProvider, vsc.Defini
 			})
 			.map(c => {
 				var r = new vsc.CompletionItem(c.name.value)
+				r.insertText = c.name.value
 
 				const typ = c.getType()
+				if (typ) {
+					// this.log(c.constructor.name + ' - ' + typ.constructor.name)
+					const rep = typ.repr()
+					r.label = r.label + ': ' + rep
+					r.detail = rep
+				}
+
 				if (typ instanceof ContainerDeclaration)
 					r.kind = K.Struct
 				else if (typ instanceof FunctionDefinition)
 					r.kind = K.Function
+				else if (c instanceof ContainerField)
+					r.kind = K.Property
+				else
+					r.kind = K.Variable
 
 				// else if (typ instanceof )
 				r.commitCharacters = ['.', '(', ')', ',', ';']
